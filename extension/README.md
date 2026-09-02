@@ -17,6 +17,10 @@ This is not a scraper. It reads the DOM of the page in front of you when you
 click a pill. It never navigates, paginates, scrolls, logs in on your behalf,
 or runs without a click. Same model as Teal, Huntr, Simplify.
 
+The extractors run in the content-script isolated world (they only need the
+page's DOM, not its JavaScript), so nothing is injected into the page itself —
+sites with a strict Content-Security-Policy, LinkedIn included, are fine.
+
 ## Load it (Chrome / Edge / Brave)
 
 1. Run the main app (`npm run dev`) and sign in.
@@ -38,8 +42,8 @@ the capture fails with a clear message — open the app, sign in, try again.
 | file | role |
 |---|---|
 | `manifest.json` | MV3 manifest, host permissions, content-script matches |
-| `content.js` | injects both pills, orchestrates single + batch capture |
-| `extractors.js` | per-site DOM field extractors — single (`__ksk_extract`) and list (`__ksk_extract_list`), + largest-text-block fallback |
+| `content.js` | injects both pills, calls the extractors, sends to the worker |
+| `extractors.js` | content-script #1 — per-site DOM extractors, single (`__ksk_extract`) and list (`__ksk_extract_list`), + largest-text-block fallback |
 | `background.js` | service worker; POSTs to `/api/jobs/capture` and `/capture/batch`, stores recent list |
 | `popup.html` / `popup.js` | set the app URL, view recent captures |
 

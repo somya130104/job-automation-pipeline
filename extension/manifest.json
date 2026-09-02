@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kaam Se Kaam \u2014 Save this job",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Save a LinkedIn / Naukri / Wellfound / careers-page job \u2014 or every job on a results page \u2014 into your Kaam Se Kaam tracker. Captures the page you're already viewing: no scraping, no automation.",
   "permissions": [
     "activeTab",
@@ -40,6 +40,7 @@
         "https://*/jobs/*"
       ],
       "js": [
+        "extractors.js",
         "content.js"
       ],
       "run_at": "document_idle"
@@ -49,16 +50,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "extractors.js"
-      ],
-      "matches": [
-        "https://*/*",
-        "http://localhost/*"
-      ]
-    }
-  ]
+  }
 }

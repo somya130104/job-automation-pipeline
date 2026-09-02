@@ -1,41 +1,18 @@
 /**
- * Injects "Save to Kaam Se Kaam" controls on any recognised job page.
+ * "Save to Kaam Se Kaam" controls on any recognised job page.
  * The pills only appear; they do nothing until clicked.
  *
  *  ★  Save this job        — single posting, full description
  *  ⇊  Capture all on page  — every job card on a LinkedIn / Naukri results page
  *                            (short teasers; the app pads them when scoring)
+ *
+ * extractors.js runs in this same isolated world (see manifest content_scripts)
+ * and exposes window.__ksk_extract / window.__ksk_extract_list. We call them
+ * directly — no <script> injection into the page, which LinkedIn's CSP blocks.
  */
 (function () {
   if (window.__ksk_injected) return;
   window.__ksk_injected = true;
-
-  // Load the extractors into the page context.
-  const s = document.createElement("script");
-  s.src = chrome.runtime.getURL("extractors.js");
-  s.onload = () => s.remove();
-  (document.head || document.documentElement).appendChild(s);
-
-  // Ask a page-context extractor to run and hand back its result.
-  function runInPage(fnName) {
-    return new Promise((resolve) => {
-      const token = "ksk_" + Math.random().toString(36).slice(2);
-      const handler = (e) => {
-        if (e.source === window && e.data && e.data.__ksk_token === token) {
-          window.removeEventListener("message", handler);
-          resolve(e.data.result);
-        }
-      };
-      window.addEventListener("message", handler);
-      const runner = document.createElement("script");
-      runner.textContent =
-        `window.postMessage({ __ksk_token: ${JSON.stringify(token)},` +
-        ` result: (window.${fnName} && window.${fnName}()) || null }, '*');`;
-      document.documentElement.appendChild(runner);
-      runner.remove();
-      setTimeout(() => resolve(null), 2500);
-    });
-  }
 
   function mkPill(label) {
     const b = document.createElement("button");
@@ -76,12 +53,20 @@
   wrap.appendChild(batchPill);
   wrap.appendChild(savePill);
 
-  // --- single job ----------------------------------------------------------
-  savePill.addEventListener("click", async () => {
+  const safe = (fn) => {
+    try {
+      return fn();
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // --- single job --------------------------------------------------------------
+  savePill.addEventListener("click", () => {
     setState(savePill, "Reading page…", "#c9c2b6");
-    const payload = await runInPage("__ksk_extract");
+    const payload = safe(() => window.__ksk_extract && window.__ksk_extract());
     if (!payload || !payload.title || (payload.description || "").length < 90) {
-      setState(savePill, "Can't read the full text here — open the job's own page", "#e5484d");
+      setState(savePill, "Can't read the full text — open the job's own page", "#e5484d");
       setTimeout(() => setState(savePill, "★ Save to Kaam Se Kaam"), 3200);
       return;
     }
@@ -100,10 +85,10 @@
     });
   });
 
-  // --- whole results page ------------------------------------------------------
-  batchPill.addEventListener("click", async () => {
+  // --- whole results page ----------------------------------------------------
+  batchPill.addEventListener("click", () => {
     setState(batchPill, "Reading list…", "#c9c2b6");
-    const out = await runInPage("__ksk_extract_list");
+    const out = safe(() => window.__ksk_extract_list && window.__ksk_extract_list());
     const items = (out && out.items) || [];
     if (items.length === 0) {
       setState(batchPill, "No job list found here", "#e5484d");
@@ -115,11 +100,7 @@
       { type: "captureBatch", site: out.site, payload: items },
       (res) => {
         if (res && res.ok) {
-          setState(
-            batchPill,
-            `Saved ${res.saved} · ${res.created} new`,
-            "#46a758"
-          );
+          setState(batchPill, `Saved ${res.saved} · ${res.created} new`, "#46a758");
         } else {
           setState(
             batchPill,
@@ -127,10 +108,7 @@
             "#e5484d"
           );
         }
-        setTimeout(
-          () => setState(batchPill, "⇊ Capture all on this page"),
-          4000
-        );
+        setTimeout(() => setState(batchPill, "⇊ Capture all on this page"), 4000);
       }
     );
   });
