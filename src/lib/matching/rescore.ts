@@ -89,9 +89,9 @@ export async function rescoreUser(
   });
 
   const embedded = 0;
+  const now = new Date();
 
-  for (const job of jobs) {
-    // Use the job's pre-computed embedding if it has one; never generate here.
+  const rows = jobs.map((job) => {
     let similarity: number | undefined;
     if (useEmbeddings && resumeVec) {
       const jobVec = parseEmbedding(job.embedding);
@@ -112,7 +112,9 @@ export async function rescoreUser(
       semanticSimilarity: similarity,
     });
 
-    const payload = {
+    return {
+      jobId: job.id,
+      userId,
       score: result.score,
       semanticScore: result.semanticScore,
       keywordScore: result.keywordScore,
@@ -121,15 +123,25 @@ export async function rescoreUser(
       locationScore: result.locationScore,
       matchedKeywords: writeList(result.matchedKeywords),
       missingKeywords: writeList(result.missingKeywords),
-      computedAt: new Date(),
+      computedAt: now,
     };
+  });
 
-    await db.matchScore.upsert({
-      where: { jobId_userId: { jobId: job.id, userId } },
-      create: { jobId: job.id, userId, ...payload },
-      update: payload,
-    });
+  // Bulk write: 2500 individual awaited upserts is ~a minute against a pooled
+  // Postgres and blows the request budget. Delete just the rows we're about to
+  // rewrite (all of them on a full rescore; only the new jobs when
+  // onlyMissing), then createMany in chunks — an order of magnitude faster.
+  if (rows.length > 0) {
+    const CHUNK = 500;
+    await db.$transaction([
+      db.matchScore.deleteMany({
+        where: { userId, jobId: { in: rows.map((r) => r.jobId) } },
+      }),
+      ...Array.from({ length: Math.ceil(rows.length / CHUNK) }, (_, i) =>
+        db.matchScore.createMany({ data: rows.slice(i * CHUNK, (i + 1) * CHUNK) }),
+      ),
+    ]);
   }
 
-  return { scored: jobs.length, embedded };
+  return { scored: rows.length, embedded };
 }
