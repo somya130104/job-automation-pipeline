@@ -37,11 +37,11 @@
     href = href.split("?")[0].split("#")[0];
 
     const card =
-      anchor.closest("li") ||
       anchor.closest("[data-occludable-job-id]") ||
-      anchor.closest("[data-job-id]") ||
+      anchor.closest("li") ||
       anchor.closest("div.job-card-container") ||
-      anchor.parentElement;
+      anchor.parentElement ||
+      anchor;
 
     const hidden = anchor.querySelector('span[aria-hidden="true"]');
     const title = clean(
@@ -50,20 +50,53 @@
       .replace(/^view job:?\s*/i, "")
       .replace(/\s*(with verification|·.*)$/i, "");
 
-    let lines = clean(card ? card.innerText : "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    lines = lines.filter((l, i) => l !== lines[i - 1]); // a11y dupes
-    lines = lines.filter((l) => l !== title && !LI_NOISE.test(l));
-
-    return {
-      url: href,
-      title,
-      company: lines[0] || "",
-      location: lines[1] || "",
-      description: lines.slice(2).join(". "),
+    const pick = (sels) => {
+      for (const s of sels) {
+        const el = card.querySelector(s);
+        const t = el && clean(el.innerText || el.textContent);
+        if (t) return t;
+      }
+      return "";
     };
+
+    // Company: the card logo's alt text is LinkedIn's most stable signal;
+    // then known subtitle classes; then line reconstruction.
+    let company = "";
+    const logo = card.querySelector("img[alt]");
+    if (logo) {
+      company = clean(logo.getAttribute("alt")).replace(/\s+(company\s+)?logo$/i, "");
+      if (/^(company|logo|)$/i.test(company)) company = "";
+    }
+    if (!company)
+      company = pick([
+        ".artdeco-entity-lockup__subtitle",
+        ".job-card-container__primary-description",
+        ".job-card-container__company-name",
+        '[class*="subtitle"]',
+      ]);
+
+    let location = pick([
+      ".artdeco-entity-lockup__caption",
+      ".job-card-container__metadata-item",
+      ".job-card-container__metadata-wrapper li",
+      '[class*="metadata"] li',
+      '[class*="caption"]',
+    ]);
+
+    let extra = "";
+    if (!company || !location) {
+      let lines = clean(card.innerText)
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      lines = lines.filter((l, i) => l !== lines[i - 1]); // a11y dupes
+      lines = lines.filter((l) => !l.startsWith(title) && !LI_NOISE.test(l));
+      if (!company) company = lines[0] || "";
+      if (!location) location = lines[company === lines[0] ? 1 : 0] || "";
+      extra = lines.slice(2).join(". ");
+    }
+
+    return { url: href, title, company, location, description: extra };
   }
 
   const EXTRACTORS = {

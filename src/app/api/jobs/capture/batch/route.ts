@@ -58,9 +58,10 @@ export const POST = route(async (req: Request) => {
   for (const item of jobs) {
     const url = item.url?.trim();
     const title = item.title?.trim();
-    const company = item.company?.trim();
-    if (!url || !title || !company) {
-      skipped.push({ url, reason: "missing url / title / company" });
+    // Company can be missing from a thin list card — keep the job, don't drop it.
+    const company = item.company?.trim() || "Company not listed";
+    if (!url || !title) {
+      skipped.push({ url, reason: "missing url / title" });
       continue;
     }
 
