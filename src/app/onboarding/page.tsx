@@ -12,7 +12,7 @@ export default async function OnboardingPage() {
 
   return (
     <main className="grain relative min-h-[100svh] overflow-hidden">
-      <PhotoBackdrop src="/images/hero.jpg" priority className="opacity-70" />
+      <PhotoBackdrop src="/images/hero.jpg" priority className="opacity-[0.55]" />
       <div className="relative z-10 mx-auto max-w-2xl px-4 py-12 sm:py-16">
         <OnboardingFlow
           initial={{

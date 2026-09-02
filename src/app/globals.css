@@ -31,6 +31,21 @@
     radial-gradient(100% 80% at 88% 8%, rgb(120 84 190 / 0.28) 0%, transparent 55%),
     radial-gradient(140% 120% at 50% 108%, rgb(12 10 9 / 0.96) 30%, transparent 75%),
     linear-gradient(176deg, rgb(58 34 18) 0%, rgb(20 16 14) 62%, rgb(12 10 9) 100%);
+
+  /* Sits ON TOP of a photo: tints it to the theme + darkens top→bottom for
+     text legibility, but stays mostly transparent so the photo shows. */
+  --photo-wash: radial-gradient(
+      120% 85% at 15% 10%,
+      rgb(196 118 42 / 0.32) 0%,
+      transparent 55%
+    ),
+    radial-gradient(100% 80% at 90% 6%, rgb(120 84 190 / 0.22) 0%, transparent 52%),
+    linear-gradient(
+      180deg,
+      rgb(var(--c-ink) / 0.2) 0%,
+      rgb(var(--c-ink) / 0.5) 52%,
+      rgb(var(--c-ink) / 0.92) 100%
+    );
 }
 
 [data-theme="blueprint"] {
@@ -55,6 +70,19 @@
     radial-gradient(100% 80% at 85% 12%, rgb(86 200 245 / 0.22) 0%, transparent 55%),
     radial-gradient(140% 120% at 50% 108%, rgb(8 13 24 / 0.96) 30%, transparent 75%),
     linear-gradient(176deg, rgb(18 42 74) 0%, rgb(12 22 40) 62%, rgb(8 13 24) 100%);
+
+  --photo-wash: radial-gradient(
+      120% 85% at 15% 10%,
+      rgb(40 120 190 / 0.4) 0%,
+      transparent 55%
+    ),
+    radial-gradient(100% 80% at 90% 6%, rgb(86 200 245 / 0.16) 0%, transparent 52%),
+    linear-gradient(
+      180deg,
+      rgb(var(--c-ink) / 0.28) 0%,
+      rgb(var(--c-ink) / 0.55) 52%,
+      rgb(var(--c-ink) / 0.94) 100%
+    );
 }
 
 [data-theme="terminal"] {
@@ -79,6 +107,19 @@
     radial-gradient(100% 80% at 86% 10%, rgb(106 232 130 / 0.16) 0%, transparent 55%),
     radial-gradient(140% 120% at 50% 108%, rgb(6 9 7 / 0.97) 30%, transparent 75%),
     linear-gradient(176deg, rgb(18 44 26) 0%, rgb(10 18 13) 62%, rgb(6 9 7) 100%);
+
+  --photo-wash: radial-gradient(
+      120% 85% at 15% 10%,
+      rgb(40 140 70 / 0.34) 0%,
+      transparent 55%
+    ),
+    radial-gradient(100% 80% at 90% 6%, rgb(106 232 130 / 0.14) 0%, transparent 52%),
+    linear-gradient(
+      180deg,
+      rgb(var(--c-ink) / 0.26) 0%,
+      rgb(var(--c-ink) / 0.55) 52%,
+      rgb(var(--c-ink) / 0.95) 100%
+    );
 }
 
 /* =================================================================

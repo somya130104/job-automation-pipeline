@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 /**
- * Full-bleed photo backdrop behind a section. The theme-aware `--hero-wash`
+ * Full-bleed photo backdrop behind a section. The theme-aware `--photo-wash`
  * gradient sits on top of it — that's what tints the same photo amber /
  * blueprint-blue / terminal-green per skin, and carries the bottom vignette
  * that keeps a headline readable over it. Purely decorative, so aria-hidden.
@@ -35,7 +35,7 @@ export function PhotoBackdrop({
       />
       <div
         className="absolute inset-0"
-        style={{ backgroundImage: "var(--hero-wash)" }}
+        style={{ backgroundImage: "var(--photo-wash)" }}
       />
     </div>
   );

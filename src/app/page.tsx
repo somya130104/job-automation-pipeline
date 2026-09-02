@@ -130,7 +130,7 @@ export default async function LandingPage() {
         >
           <PhotoBackdrop
             src="/images/workspace.jpg"
-            className="opacity-[0.28]"
+            className="opacity-[0.35]"
           />
           <div className="relative z-10 mx-auto max-w-7xl">
           <p className="label-mono mb-3 !text-accent">Where the jobs come from</p>
