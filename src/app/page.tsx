@@ -1,7 +1,6 @@
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { LiveCounter } from "@/components/chrome/LiveCounter";
-import { ThemeSwitcher } from "@/components/chrome/ThemeSwitcher";
 import { LiveFeedDock, type FeedItem } from "@/components/chrome/LiveFeedDock";
 import { HeroPills } from "@/components/landing/HeroPills";
 import { PhotoBackdrop } from "@/components/landing/PhotoBackdrop";
@@ -45,10 +44,6 @@ export default async function LandingPage() {
           <div className="relative z-10 flex items-start justify-between gap-3 p-4 sm:p-6">
             <LiveCounter />
 
-            <div className="hidden sm:block">
-              <ThemeSwitcher />
-            </div>
-
             <div className="flex items-center gap-2">
               <a href="#how" className="pill hidden md:inline-flex">
                 How it works
@@ -69,9 +64,9 @@ export default async function LandingPage() {
             </p>
 
             <h1 className="display display-outlined max-w-[16ch] text-[clamp(2.9rem,12vw,9.5rem)]">
-              Stop refreshing
+              Bhai, hire
               <br />
-              <span className="text-accent">LinkedIn.</span>
+              <span className="text-accent">karwa de.</span>
             </h1>
 
             <p className="mt-7 max-w-[52ch] text-balance text-base leading-relaxed text-paper/75 sm:text-lg">

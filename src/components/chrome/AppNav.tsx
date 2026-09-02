@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid, KanbanSquare, Sparkles, Settings, Share2 } from "lucide-react";
 import { LiveCounter } from "./LiveCounter";
-import { ThemeSwitcher } from "./ThemeSwitcher";
 import { NavAuth } from "./NavAuth";
 import { cn } from "@/lib/utils";
 
@@ -57,8 +56,6 @@ export function AppNav() {
           <div className="hidden lg:block">
             <LiveCounter />
           </div>
-          <ThemeSwitcher compact />
-
           <NavAuth />
         </div>
       </div>

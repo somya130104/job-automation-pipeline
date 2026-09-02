@@ -16,7 +16,6 @@ interface ProfileBody {
   remoteOnly: boolean;
   salaryMin: number | null;
   salaryMax: number | null;
-  theme: string;
   digestFrequency: string;
   matchThreshold: number;
   onboarded: boolean;
@@ -58,7 +57,6 @@ export const PATCH = route(async (req: Request) => {
   if (body.salaryMax !== undefined) {
     data.salaryMax = body.salaryMax === null ? null : clampNumber(body.salaryMax, 0, 1e9, 0);
   }
-  if (body.theme !== undefined) data.theme = String(body.theme).slice(0, 40);
   if (body.digestFrequency !== undefined) {
     data.digestFrequency = ["daily", "weekdays", "off"].includes(
       String(body.digestFrequency),
