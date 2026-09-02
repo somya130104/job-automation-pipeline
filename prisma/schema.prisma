@@ -1,0 +1,294 @@
+// Phase 1 data model.
+// SQLite for zero-setup local dev. SQLite has no scalar lists, so every
+// string[] in the concept doc is stored as a JSON-encoded string and read
+// back through the helpers in src/lib/json-list.ts.
+// Swapping to Postgres later = change `provider` + `DATABASE_URL` only.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  // Clerk's user id when Clerk is configured; the literal "local-dev" otherwise.
+  authId    String   @unique
+  email     String?
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // --- profile / targeting ---
+  onboarded       Boolean @default(false)
+  roleType        String  @default("fulltime") // fulltime | internship
+  targetRoles     String  @default("[]") // JSON string[]
+  targetLocations String  @default("[]") // JSON string[]
+  experienceYears Float   @default(0)
+  salaryMin       Int?
+  salaryMax       Int?
+  salaryCurrency  String  @default("INR")
+  remoteOnly      Boolean @default(false)
+
+  // --- settings ---
+  theme           String    @default("midnight-amber")
+  digestFrequency String    @default("daily") // daily | weekdays | off
+  matchThreshold  Int       @default(55)
+  digestHour      Int       @default(8) // local hour, informational
+  unsubToken      String?   @unique
+  lastDigestAt    DateTime?
+  lastDigestCount Int       @default(0)
+
+  // --- gamification ---
+  streakCount     Int       @default(0)
+  streakUpdatedAt DateTime?
+
+  resumes          Resume[]
+  matchScores      MatchScore[]
+  applications     Application[]
+  digestSends      DigestSend[]
+  outreachDrafts   OutreachDraft[]
+  trackedCompanies TrackedCompany[]
+  badges           Badge[]
+}
+
+model Resume {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String   @default("Default")
+  isPrimary Boolean  @default(false)
+  fileName  String
+  mimeType  String
+  rawText   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // parsed structured data (JSON strings)
+  skills     String @default("[]") // string[]
+  experience String @default("[]") // {title,company,start,end,bullets[]}[]
+  education  String @default("[]") // {school,degree,year}[]
+
+  // ATS-readability check
+  atsScore  Int    @default(0)
+  atsIssues String @default("[]") // {severity,label,detail}[]
+
+  // Phase 2 semantic matching — embedding of the resume's skills+experience text
+  embedding     String?
+  embeddingHash String?
+
+  outreachDrafts OutreachDraft[]
+
+  @@index([userId])
+}
+
+model Job {
+  id          String @id @default(cuid())
+  // hash(source + sourceToken + externalId) — stable across re-ingests.
+  fingerprint String @unique
+  // hash(normalised title + normalised company) — cross-source dedup key.
+  dedupKey    String
+  externalId  String
+  source      String // greenhouse | lever | ashby | remoteok | hn | capture | manual
+  sourceToken String @default("")
+  capturedVia String @default("api") // api | extension | manual
+
+  title           String
+  company         String
+  companyLogo     String?
+  locations       String  @default("[]") // JSON string[]
+  remoteType      String  @default("unknown") // remote | hybrid | onsite | unknown
+  employmentType  String  @default("fulltime") // fulltime | internship | contract | parttime
+  department      String?
+  descriptionText String
+  descriptionHtml String?
+  applyUrl        String
+
+  compensationMin      Int?
+  compensationMax      Int?
+  compensationCurrency String?
+  stipend              String?
+
+  durationMonths      Int?
+  startDate           DateTime?
+  applicationDeadline DateTime?
+
+  postedAt   DateTime
+  ingestedAt DateTime @default(now())
+
+  // --- Phase 2: semantic matching. all-MiniLM-L6-v2 -> 384 floats, JSON-encoded
+  // (SQLite has no vector type; cosine is computed in JS). Null until embedded.
+  embedding     String?
+  embeddingHash String? // hash of the text that was embedded, to skip recompute
+
+  // --- Addendum E: scam-risk heuristic for remote/internship listings ---
+  scamRisk    Int    @default(0) // 0-100
+  scamReasons String @default("[]") // JSON string[]
+
+  // --- Firecrawl career-page provenance (source='career_page') ---
+  contentHash String?
+
+  matchScores  MatchScore[]
+  applications Application[]
+  digestSends  DigestSend[]
+
+  @@index([dedupKey])
+  @@index([postedAt])
+  @@index([source])
+}
+
+model MatchScore {
+  id     String @id @default(cuid())
+  jobId  String
+  userId String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  score Int // 0-100, the blended headline number
+
+  // breakdown, so the UI can explain WHY something matched
+  semanticScore   Int @default(0)
+  keywordScore    Int @default(0)
+  titleScore      Int @default(0)
+  experienceScore Int @default(0)
+  locationScore   Int @default(0)
+
+  matchedKeywords String @default("[]") // JSON string[]
+  missingKeywords String @default("[]") // JSON string[]
+
+  computedAt DateTime @default(now())
+
+  @@unique([jobId, userId])
+  @@index([userId, score])
+}
+
+model Application {
+  id     String @id @default(cuid())
+  jobId  String
+  userId String
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // saved | applied | interviewing | offer | rejected | ghosted
+  status     String @default("saved")
+  // manual ordering inside a Kanban column
+  boardOrder Int    @default(0)
+
+  appliedAt    DateTime?
+  followUpDate DateTime?
+  notes        String    @default("")
+  prepNotes    String    @default("")
+
+  // Postings get edited or pulled — keep our own copy at the moment of applying.
+  jdSnapshot String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobId, userId])
+  @@index([userId, status])
+}
+
+model OutreachDraft {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId      String
+  resumeId   String?
+  resume     Resume?  @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  kind       String   @default("email") // email | connection_note
+  subject    String   @default("")
+  body       String
+  sentByUser Boolean  @default(false) // the user marks this true; app never sends
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, jobId])
+}
+
+// One row per (user, job) that has appeared in a digest, so nothing repeats.
+model DigestSend {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId  String
+  sentAt DateTime @default(now())
+  Job    Job      @relation(fields: [jobId], references: [id])
+
+  @@unique([userId, jobId])
+  @@index([userId, sentAt])
+}
+
+// Companies a user follows; ATS token resolved once then polled forever.
+model TrackedCompany {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  website         String?
+  careersUrl      String?
+  atsType         String? // greenhouse | lever | ashby | smartrecruiters | recruitee | workable
+  atsToken        String?
+  discoveryStatus String    @default("pending") // pending | resolved | none | error
+  discoveryError  String?
+  ycBatch         String?
+  lastCrawledAt   DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@unique([userId, name])
+  @@index([discoveryStatus])
+}
+
+// Firecrawl credit ledger — surfaced on the admin/health page.
+model FirecrawlUsage {
+  id        String   @id @default(cuid())
+  op        String // map | scrape
+  url       String
+  credits   Int      @default(1)
+  ok        Boolean  @default(true)
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Parsed HN "Who is Hiring" comments, cached by comment id so re-runs are free.
+model HnParse {
+  id         String   @id // the HN comment id
+  threadId   String
+  raw        String
+  parsed     String   @default("{}") // JSON: {company,role,location,remote,salary,techStack[],applyContact}
+  confidence Float    @default(0)
+  jobId      String? // set once promoted to a Job
+  createdAt  DateTime @default(now())
+
+  @@index([threadId])
+}
+
+model Badge {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug     String // e.g. "first-application", "week-streak", "ten-applied"
+  earnedAt DateTime @default(now())
+
+  @@unique([userId, slug])
+}
+
+model IngestRun {
+  id         String    @id @default(cuid())
+  source     String
+  token      String    @default("")
+  status     String    @default("running") // running | ok | failed
+  fetched    Int       @default(0)
+  created    Int       @default(0)
+  duplicates Int       @default(0)
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([source, startedAt])
+}
