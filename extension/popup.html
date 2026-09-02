@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { width: 300px; margin: 0; font: 13px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; background: #0c0a09; color: #f4efe6; }
+      .wrap { padding: 14px; }
+      h1 { font-size: 14px; margin: 0 0 2px; color: #f5a623; }
+      p { margin: 0 0 10px; color: #9a9084; font-size: 11px; }
+      label { font-size: 11px; color: #9a9084; display: block; margin-bottom: 4px; }
+      input { width: 100%; box-sizing: border-box; padding: 7px 9px; border-radius: 8px; border: 1px solid #2a251d; background: #17140f; color: #f4efe6; }
+      button { margin-top: 8px; width: 100%; padding: 8px; border-radius: 8px; border: 2px solid #0c0a09; background: #f5a623; color: #0c0a09; font-weight: 700; cursor: pointer; }
+      .recent { margin-top: 12px; border-top: 1px solid #2a251d; padding-top: 10px; }
+      .row { font-size: 11px; padding: 4px 0; border-bottom: 1px solid #17140f; }
+      .row b { color: #f4efe6; }
+      .score { color: #f5a623; float: right; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Kaam Se Kaam</h1>
+      <p>Open a job page and click the ★ pill. Sign into the app in a tab first so captures are attributed to you.</p>
+      <label for="origin">App URL</label>
+      <input id="origin" placeholder="http://localhost:3000" />
+      <button id="save">Save</button>
+      <div class="recent" id="recent"></div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>
