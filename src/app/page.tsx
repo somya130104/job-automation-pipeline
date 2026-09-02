@@ -64,9 +64,9 @@ export default async function LandingPage() {
             </p>
 
             <h1 className="display display-outlined max-w-[16ch] text-[clamp(2.9rem,12vw,9.5rem)]">
-              Bhai, hire
+              Hire Karwa
               <br />
-              <span className="text-accent">karwa de.</span>
+              <span className="text-accent">de, Bhai</span>
             </h1>
 
             <p className="mt-7 max-w-[52ch] text-balance text-base leading-relaxed text-paper/75 sm:text-lg">
