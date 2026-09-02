@@ -35,37 +35,50 @@ export interface ParsedResume {
 /* Section splitting                                                   */
 /* ------------------------------------------------------------------ */
 
-const SECTION_ALIASES: Record<string, string[]> = {
-  experience: [
-    "experience", "work experience", "professional experience",
-    "employment", "employment history", "work history", "career history",
-    "internships", "internship experience", "relevant experience",
-  ],
-  education: ["education", "academics", "academic background", "qualifications"],
-  skills: [
-    "skills", "technical skills", "core skills", "technologies",
-    "tech stack", "skills & tools", "competencies", "toolbox",
-  ],
-  projects: ["projects", "personal projects", "side projects", "selected projects"],
-};
+/**
+ * Section keyword matchers, checked in priority order. A heading only has to
+ * *contain* one of these — so "EDUCATIONAL QUALIFICATIONS", "INTERNSHIP
+ * EXPERIENCES", "KEY PROJECTS", "SKILLS & INTERESTS" all resolve correctly,
+ * which exact-string matching used to miss.
+ */
+const SECTION_MATCHERS: Array<{ section: string; re: RegExp }> = [
+  { section: "experience", re: /\b(work|professional|industry|relevant)?\s*experiences?\b/i },
+  { section: "experience", re: /\binternships?\b|\binternship experiences?\b/i },
+  { section: "experience", re: /\b(employment|work) history\b|\bcareer history\b/i },
+  { section: "experience", re: /\bpositions? of responsibilit(?:y|ies)\b/i },
+  { section: "education", re: /\beducat(?:ion|ional)\b|\bacademic (?:background|qualifications?)\b/i },
+  { section: "education", re: /\beducational qualifications?\b|\bacademic details\b/i },
+  { section: "projects", re: /\b(key|academic|selected|personal|side|technical)?\s*projects?\b/i },
+  { section: "skills", re: /\b(technical|core|key)?\s*skills\b|\btech(?:nical)? stack\b|\btechnolog(?:y|ies)\b|\bcompetenc(?:y|ies)\b|\btoolbox\b/i },
+];
+
+/** Words that mean a "heading" line is really prose, not a heading. */
+const HEADING_STOPWORDS =
+  /\b(i|my|we|our|with|using|including|such as|responsible|worked|built|developed|and the|for the)\b/i;
 
 /**
- * A heading is a short line that matches a known section name. Requiring
- * shortness matters: "I have experience with distributed systems" would
- * otherwise be read as the start of the Experience section.
+ * A heading is a short, punctuation-free line whose text contains a section
+ * keyword. The shortness + stopword guards stop "I have experience with
+ * distributed systems" being read as the Experience heading.
  */
 function classifyHeading(line: string): string | null {
-  const cleaned = line
-    .trim()
-    .replace(/[:•\-–—_*]+$/g, "")
-    .replace(/^[•\-–—*]+/g, "")
-    .trim()
-    .toLowerCase();
+  const raw = line.trim();
+  if (!raw) return null;
 
-  if (!cleaned || cleaned.length > 40) return null;
+  const cleaned = raw
+    .replace(/[:•\-–—_*|]+$/g, "")
+    .replace(/^[•\-–—*#]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  for (const [section, aliases] of Object.entries(SECTION_ALIASES)) {
-    if (aliases.includes(cleaned)) return section;
+  // Headings are short and terse: few words, no mid-line sentence punctuation.
+  const wordCount = cleaned.split(" ").filter(Boolean).length;
+  if (!cleaned || cleaned.length > 48 || wordCount > 6) return null;
+  if (/[.!?;]\s/.test(cleaned) || /\d{4}/.test(cleaned)) return null;
+  if (HEADING_STOPWORDS.test(cleaned)) return null;
+
+  for (const { section, re } of SECTION_MATCHERS) {
+    if (re.test(cleaned)) return section;
   }
   return null;
 }
@@ -97,26 +110,41 @@ export function splitSections(text: string): Record<string, string> {
 const MONTHS =
   "jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december";
 
-// "Jan 2020 - Present", "2020 – 2022", "03/2019 to 06/2021"
+// One date token: "Jan 2020", "May'25", "05/2019", "2020", "Sept. 2021".
+const DATE_TOKEN = `(?:(?:${MONTHS})\\.?[\\s']*)?(?:\\d{4}|'?\\d{2})|\\d{1,2}\\/\\d{2,4}`;
+
+// A range: "<token> - <token|present>". Handles hyphen/en-dash/em-dash/"to",
+// 2-digit apostrophe years ("May'25 - Jul'25") and parenthesised ranges.
 const DATE_RANGE_RE = new RegExp(
-  `((?:${MONTHS})?\\.?\\s*\\d{4}|\\d{1,2}\\/\\d{4})\\s*(?:-|–|—|to|until)\\s*((?:${MONTHS})?\\.?\\s*\\d{4}|\\d{1,2}\\/\\d{4}|present|current|now|ongoing)`,
+  `(${DATE_TOKEN})\\s*(?:-|–|—|to|until|through)\\s*(${DATE_TOKEN}|present|current|now|ongoing|date)`,
   "i",
 );
 
+function normYear(y: string): number {
+  const n = Number(y.replace(/'/g, ""));
+  return n < 100 ? 2000 + n : n;
+}
+
 function toDate(token: string): Date | null {
-  const t = token.trim().toLowerCase();
-  if (/^(present|current|now|ongoing)$/.test(t)) return new Date();
+  const t = token.trim().toLowerCase().replace(/[()]/g, "");
+  if (/^(present|current|now|ongoing|date)$/.test(t)) return new Date();
 
-  const slash = /^(\d{1,2})\/(\d{4})$/.exec(t);
-  if (slash) return new Date(Number(slash[2]), Number(slash[1]) - 1, 1);
+  const slash = /^(\d{1,2})\/(\d{2,4})$/.exec(t);
+  if (slash) return new Date(normYear(slash[2]), Number(slash[1]) - 1, 1);
 
-  const monthYear = new RegExp(`^(${MONTHS})\\.?\\s*(\\d{4})$`, "i").exec(t);
+  const monthYear = new RegExp(`^(${MONTHS})\\.?[\\s']*('?\\d{2}|\\d{4})$`, "i").exec(t);
   if (monthYear) {
     const idx = [
       "jan", "feb", "mar", "apr", "may", "jun",
       "jul", "aug", "sep", "oct", "nov", "dec",
     ].indexOf(monthYear[1].slice(0, 3).toLowerCase());
-    return new Date(Number(monthYear[2]), idx < 0 ? 0 : idx, 1);
+    return new Date(normYear(monthYear[2]), idx < 0 ? 0 : idx, 1);
+  }
+
+  const yearOnly2 = /^'?(\d{2})$/.exec(t);
+  if (yearOnly2) {
+    const year = 2000 + Number(yearOnly2[1]);
+    if (year >= 1990 && year <= new Date().getFullYear() + 1) return new Date(year, 0, 1);
   }
 
   const yearOnly = /^(\d{4})$/.exec(t);
@@ -166,68 +194,83 @@ export function computeExperienceYears(text: string): number {
 /* Experience entries                                                  */
 /* ------------------------------------------------------------------ */
 
-const BULLET_RE = /^\s*[•●▪◦*\-–—]\s+/;
+const LEAD_MARKER_RE = /^\s*[•●○◦▪‣·*\u2022\u25AA\u25E6-]\s+/;
+/** Sub-bullets use a *different* marker than the role header in many resumes
+ * ("•" for the role, "◦"/"-" for bullets). Treat these as always-a-bullet. */
+const SUB_BULLET_RE = /^\s*[◦‣▸▹\-*]\s+/;
+/** Signals a line is a job/role header rather than a bullet or prose. */
+const ROLE_HEADER_RE = /\s[|–—]\s|\s+\bat\b\s+|\)\s*$/;
 
-function isBullet(line: string): boolean {
-  return BULLET_RE.test(line);
+function stripMarker(line: string): string {
+  return line.replace(LEAD_MARKER_RE, "").trim();
+}
+
+function splitTitleCompany(text: string): { title: string; company: string } {
+  const parts = text
+    .split(/\s*[|–—]\s*|\s{2,}|\s+\bat\b\s+|,\s+(?=[A-Z])/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return { title: parts[0] ?? text ?? "Role", company: parts[1] ?? "" };
 }
 
 function parseExperienceSection(section: string): ParsedExperience[] {
   if (!section) return [];
 
-  const lines = section.split("\n").filter((l) => l.trim());
+  const lines = section.split("\n").map((l) => l.trim()).filter(Boolean);
   const entries: ParsedExperience[] = [];
   let current: ParsedExperience | null = null;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const body = stripMarker(line);
+    const dateMatch = body.match(DATE_RANGE_RE);
+    const looksLikeHeader =
+      !SUB_BULLET_RE.test(line) &&
+      body.length < 170 &&
+      (dateMatch !== null || ROLE_HEADER_RE.test(body)) &&
+      // guard against a sentence-y bullet that happens to contain "at" / a year
+      !/\b(built|led|developed|designed|implemented|created|improved|reduced|increased)\b/i.test(
+        body.split(/\s+/).slice(0, 2).join(" "),
+      );
 
-    if (isBullet(trimmed)) {
-      current?.bullets.push(trimmed.replace(BULLET_RE, "").trim());
-      continue;
-    }
-
-    const dateMatch = trimmed.match(DATE_RANGE_RE);
-
-    // A non-bullet line carrying a date range starts a new role. Resumes vary
-    // wildly in whether title or company comes first, and in whether they're
-    // on one line or two — so split on the common separators and take the
-    // first two fields rather than guessing a fixed order.
-    if (dateMatch) {
+    if (looksLikeHeader) {
       if (current) entries.push(current);
-      const withoutDate = trimmed.replace(DATE_RANGE_RE, "").trim();
-      const parts = withoutDate
-        .split(/\s+[|·•@,]\s+|\s{2,}|\s+–\s+|\s+-\s+/)
-        .map((p) => p.trim())
-        .filter(Boolean);
-
+      // Date might be on this line, or wrap to the next.
+      const dm =
+        dateMatch ??
+        lines[i + 1]?.match(DATE_RANGE_RE) ??
+        lines[i + 2]?.match(DATE_RANGE_RE);
+      const withoutDate = body.replace(DATE_RANGE_RE, "").replace(/\(\s*\)/g, "").trim();
+      const { title, company } = splitTitleCompany(withoutDate);
       current = {
-        title: parts[0] ?? withoutDate ?? "Role",
-        company: parts[1] ?? "",
-        start: dateMatch[1].trim(),
-        end: dateMatch[2].trim(),
+        title,
+        company,
+        start: dm ? dm[1].trim() : null,
+        end: dm ? dm[2].trim() : null,
         bullets: [],
       };
       continue;
     }
 
-    // A short line right after a dated header is usually the company name
-    // that wrapped onto its own line.
-    if (current && !current.company && trimmed.length < 60) {
-      current.company = trimmed;
+    // Otherwise it's bullet/detail text belonging to the current role.
+    if (current) {
+      const b = SUB_BULLET_RE.test(line) ? line.replace(SUB_BULLET_RE, "").trim() : body;
+      if (b.length > 2) current.bullets.push(b);
     }
   }
 
   if (current) entries.push(current);
-  return entries.slice(0, 12);
+  return entries.slice(0, 14);
 }
 
 /* ------------------------------------------------------------------ */
 /* Education                                                           */
 /* ------------------------------------------------------------------ */
 
+// Allow spaces after the abbreviation dot ("B. Tech", "M. Tech"), plus Indian
+// board exams which resumes routinely list as education entries.
 const DEGREE_RE =
-  /\b(b\.?tech|b\.?e\.?|b\.?sc|bachelor(?:'?s)?|m\.?tech|m\.?sc|master(?:'?s)?|mba|ph\.?d|doctorate|diploma|b\.?com|bca|mca)\b/i;
+  /\b(b\.?\s?tech|b\.?\s?e\.?|b\.?\s?sc|bachelor(?:'?s)?|m\.?\s?tech|m\.?\s?sc|master(?:'?s)?|dual degree|integrated m\.?\s?tech|mba|pgdm|ph\.?\s?d|doctorate|diploma|b\.?\s?com|b\.?\s?a\b|bca|mca|class\s+(?:x{1,3}|xii|10|12))\b/i;
 
 const FIELD_OF_STUDY_PREFIX_RE =
   /^(?:computer science(?:\s+(?:&|and)\s+engineering)?|information technology|data science|artificial intelligence|electrical(?:\s+(?:&|and)\s+electronics)?|electronics(?:\s+(?:&|and)\s+communication)?|mechanical|civil|chemical|biotechnology|mathematics|statistics|physics|chemistry|business administration|commerce|economics|design)\s+/i;

@@ -27,7 +27,9 @@ interface GeminiOpts {
 
 export class GeminiError extends Error {}
 
-/** Raw text completion. Throws GeminiError on any failure. */
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+/** Raw text completion. Retries transient 429/5xx with backoff; throws GeminiError otherwise. */
 export async function geminiText(
   prompt: string,
   opts: GeminiOpts = {},
@@ -35,56 +37,78 @@ export async function geminiText(
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) throw new GeminiError("GEMINI_API_KEY not set");
 
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    opts.timeoutMs ?? 30_000,
-  );
+  const retries = 3;
+  let lastErr: unknown;
 
-  try {
-    const res = await fetch(`${ENDPOINT}?key=${key}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: opts.temperature ?? 0.2,
-          maxOutputTokens: opts.maxOutputTokens ?? 2048,
-          ...(opts.schema
-            ? {
-                responseMimeType: "application/json",
-                responseSchema: opts.schema,
-              }
-            : {}),
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new GeminiError(`Gemini ${res.status}: ${detail.slice(0, 300)}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 1200 * 2 ** (attempt - 1)));
     }
 
-    const data = (await res.json()) as {
-      candidates?: Array<{
-        content?: { parts?: Array<{ text?: string }> };
-        finishReason?: string;
-      }>;
-    };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new GeminiError("Gemini returned no text");
-    return text;
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new GeminiError("Gemini request timed out");
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      opts.timeoutMs ?? 30_000,
+    );
+
+    try {
+      const res = await fetch(`${ENDPOINT}?key=${key}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: opts.temperature ?? 0.2,
+            maxOutputTokens: opts.maxOutputTokens ?? 2048,
+            ...(opts.schema
+              ? {
+                  responseMimeType: "application/json",
+                  responseSchema: opts.schema,
+                }
+              : {}),
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        const err = new GeminiError(`Gemini ${res.status}: ${detail.slice(0, 300)}`);
+        if (RETRYABLE.has(res.status) && attempt < retries) {
+          lastErr = err;
+          continue;
+        }
+        throw err;
+      }
+
+      const data = (await res.json()) as {
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> };
+          finishReason?: string;
+        }>;
+      };
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new GeminiError("Gemini returned no text");
+      return text;
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof GeminiError && !/Gemini (429|5\d\d)/.test(err.message)) {
+        // non-retryable GeminiError (e.g. 4xx other than 429) — rethrow now
+        throw err;
+      }
+      if (attempt >= retries) break;
+    } finally {
+      clearTimeout(timer);
     }
-    throw err instanceof GeminiError
-      ? err
-      : new GeminiError(err instanceof Error ? err.message : String(err));
-  } finally {
-    clearTimeout(timer);
   }
+
+  const err = lastErr;
+  if (err instanceof Error && err.name === "AbortError") {
+    throw new GeminiError("Gemini request timed out after retries");
+  }
+  throw err instanceof GeminiError
+    ? err
+    : new GeminiError(err instanceof Error ? err.message : String(err));
 }
 
 /**

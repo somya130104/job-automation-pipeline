@@ -3,11 +3,14 @@ import { db } from "@/lib/db";
 import { fail, ok, route } from "@/lib/api";
 import { writeList } from "@/lib/json-list";
 import { checkAts } from "@/lib/resume/ats-check";
+import { checkAtsLlm, mergeAts } from "@/lib/resume/ats-llm";
 import { extractText, UnsupportedResumeError } from "@/lib/resume/extract-text";
 import { extractResumeFields } from "@/lib/resume/parse-llm";
 
 // pdf-parse and mammoth are Node-only; the edge runtime cannot load them.
 export const runtime = "nodejs";
+// Resume parsing + two Gemini calls (field extraction, ATS review) with retries.
+export const maxDuration = 60;
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -44,7 +47,10 @@ export const POST = route(async (req: Request) => {
   }
 
   const parsed = await extractResumeFields(extracted.text);
-  const ats = checkAts(extracted.text, parsed, extracted.likelyImageOnly);
+  // Deterministic rule engine + (when a Gemini key is set) a strict LLM review,
+  // blended with the rules as the strictness anchor.
+  const rulesAts = checkAts(extracted.text, parsed, extracted.likelyImageOnly);
+  const ats = mergeAts(rulesAts, await checkAtsLlm(extracted.text));
 
   // First resume uploaded becomes the primary one used for scoring.
   const existing = await db.resume.count({ where: { userId: user.id } });
