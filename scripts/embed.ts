@@ -1,12 +1,12 @@
 /**
- * Batch-embed every job (and the primary resume per user), so the first
+ * Batch-embed every job via the Gemini batch embedding API, so the first
  * rescore after an ingest isn't paying the embedding cost inline.
  *
  *   npm run embed            embed jobs missing an up-to-date vector
  *   npm run embed -- --all   re-embed everything
  */
 import { db } from "../src/lib/db";
-import { embed, embedHash, writeVec } from "./_embed-helpers";
+import { embedHash, embedMany } from "../src/lib/matching/embed";
 
 async function main() {
   const all = process.argv.includes("--all");
@@ -15,38 +15,45 @@ async function main() {
     select: { id: true, title: true, descriptionText: true, embeddingHash: true },
   });
 
-  let done = 0;
-  let skipped = 0;
-  const t0 = Date.now();
-
-  for (const job of jobs) {
-    const text = `${job.title}\n${job.descriptionText.slice(0, 3500)}`;
-    const hash = embedHash(text);
-    if (!all && job.embeddingHash === hash) {
-      skipped++;
-      continue;
-    }
-    try {
-      const vec = await embed(text);
-      await db.job.update({
-        where: { id: job.id },
-        data: { embedding: writeVec(vec), embeddingHash: hash },
-      });
-      done++;
-      if (done % 50 === 0) {
-        const rate = (done / ((Date.now() - t0) / 1000)).toFixed(1);
-        console.log(`  ${done}/${jobs.length - skipped} embedded (${rate}/s)`);
-      }
-    } catch (err) {
-      console.warn(`  ! failed ${job.id}: ${err instanceof Error ? err.message : err}`);
-    }
-  }
+  const pending = jobs
+    .map((j) => ({
+      id: j.id,
+      text: `${j.title}\n${j.descriptionText.slice(0, 3500)}`,
+      hash: "",
+      current: j.embeddingHash,
+    }))
+    .map((j) => ({ ...j, hash: embedHash(j.text) }))
+    .filter((j) => all || j.current !== j.hash);
 
   console.log(
-    `\nEmbedded ${done} jobs, skipped ${skipped} unchanged, in ${(
-      (Date.now() - t0) / 1000
-    ).toFixed(1)}s.`,
+    `${jobs.length} jobs, ${pending.length} need embedding${all ? " (--all)" : ""}.`,
   );
+  if (pending.length === 0) return;
+
+  const t0 = Date.now();
+  const BATCH = 100;
+  for (let i = 0; i < pending.length; i += BATCH) {
+    const slice = pending.slice(i, i + BATCH);
+    let vecs: number[][];
+    try {
+      vecs = await embedMany(slice.map((s) => s.text));
+    } catch (err) {
+      console.warn(`  ! batch ${i}-${i + slice.length} failed: ${err instanceof Error ? err.message : err}`);
+      continue;
+    }
+    await db.$transaction(
+      slice.map((s, k) =>
+        db.job.update({
+          where: { id: s.id },
+          data: { embedding: JSON.stringify(vecs[k]), embeddingHash: s.hash },
+        }),
+      ),
+    );
+    const done = Math.min(i + BATCH, pending.length);
+    console.log(`  ${done}/${pending.length} (${((done / ((Date.now() - t0) / 1000)) || 0).toFixed(0)}/s)`);
+  }
+
+  console.log(`\nEmbedded ${pending.length} jobs in ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
 }
 
 main()
