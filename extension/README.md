@@ -3,10 +3,19 @@
 One-click capture of a job you're **already viewing** on LinkedIn, Naukri,
 Wellfound, or any Greenhouse/Lever/Ashby/careers page, into your tracker.
 
+Two pills, bottom-right:
+
+- **★ Save to Kaam Se Kaam** — the single posting you're on, full description →
+  `POST /api/jobs/capture`.
+- **⇊ Capture all on this page** — every job card currently rendered on a
+  LinkedIn or Naukri **search-results** page (title / company / location / short
+  teaser + permalink) → `POST /api/jobs/capture/batch`. The app pads the thin
+  teaser when scoring; open the good matches and use **★ Save** for the full JD.
+  Scroll the results list to the bottom first so all cards are in the DOM.
+
 This is not a scraper. It reads the DOM of the page in front of you when you
-click the pill, and POSTs the visible title / company / description to the
-app's `/api/jobs/capture` endpoint. It never navigates, paginates, logs in on
-your behalf, or runs without a click. Same model as Teal, Huntr, Simplify.
+click a pill. It never navigates, paginates, scrolls, logs in on your behalf,
+or runs without a click. Same model as Teal, Huntr, Simplify.
 
 ## Load it (Chrome / Edge / Brave)
 
@@ -29,9 +38,9 @@ the capture fails with a clear message — open the app, sign in, try again.
 | file | role |
 |---|---|
 | `manifest.json` | MV3 manifest, host permissions, content-script matches |
-| `content.js` | injects the pill, orchestrates a capture |
-| `extractors.js` | per-site DOM field extractors (+ largest-text-block fallback) |
-| `background.js` | service worker; POSTs to `/api/jobs/capture`, stores recent list |
+| `content.js` | injects both pills, orchestrates single + batch capture |
+| `extractors.js` | per-site DOM field extractors — single (`__ksk_extract`) and list (`__ksk_extract_list`), + largest-text-block fallback |
+| `background.js` | service worker; POSTs to `/api/jobs/capture` and `/capture/batch`, stores recent list |
 | `popup.html` / `popup.js` | set the app URL, view recent captures |
 
 ## Icons

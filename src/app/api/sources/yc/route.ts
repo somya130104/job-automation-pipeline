@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { fail, ok, route } from "@/lib/api";
-import { syncYc } from "@/lib/sources/yc";
+import { resolvePending, syncYc } from "@/lib/sources/yc";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,6 +20,9 @@ export const POST = route(async (req: Request) => {
   const url = new URL(req.url);
   const recentBatches = Number(url.searchParams.get("batches")) || 8;
   const discoverLimit = Number(url.searchParams.get("limit")) || 12;
+  // ?mode=resolve drains the pending/error backlog without re-fetching the
+  // YC directory (the "Resolve pending" button).
+  const mode = url.searchParams.get("mode");
 
   // Cron path: sync for every onboarded user is overkill; sync for the first
   // user (single-tenant deploys) and let per-user calls handle the rest.
@@ -30,6 +33,12 @@ export const POST = route(async (req: Request) => {
     ).then((u) => u?.id));
 
   if (!targetUserId) return fail("No onboarded user to attach companies to.");
+
+  if (mode === "resolve") {
+    const limit = Number(url.searchParams.get("limit")) || 40;
+    const summary = await resolvePending(targetUserId, { limit });
+    return ok({ mode: "resolve", ...summary });
+  }
 
   const summary = await syncYc(targetUserId, { recentBatches, discoverLimit });
   return ok(summary);

@@ -83,3 +83,41 @@ export const POST = route(async (req: Request) => {
     },
   });
 });
+
+/**
+ * Delete one resume by id (`?id=…`). Old uploads pile up in Settings otherwise.
+ * OutreachDraft.resumeId is ON DELETE SET NULL, so drafts survive. If the
+ * primary is removed, the newest remaining resume is promoted so scoring always
+ * has one to use.
+ */
+export const DELETE = route(async (req: Request) => {
+  const user = await requireUser();
+  const id = new URL(req.url).searchParams.get("id")?.trim();
+  if (!id) return fail("Pass the resume id as `?id=`.");
+
+  const resume = await db.resume.findFirst({
+    where: { id, userId: user.id },
+    select: { id: true, isPrimary: true },
+  });
+  if (!resume) return fail("No such resume.", 404);
+
+  await db.resume.delete({ where: { id: resume.id } });
+
+  let promotedId: string | null = null;
+  if (resume.isPrimary) {
+    const next = await db.resume.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (next) {
+      await db.resume.update({
+        where: { id: next.id },
+        data: { isPrimary: true },
+      });
+      promotedId = next.id;
+    }
+  }
+
+  return ok({ deleted: resume.id, promotedId });
+});

@@ -163,3 +163,74 @@ export async function syncYc(
 
   return summary;
 }
+
+export interface ResolvePendingSummary {
+  attempted: number;
+  resolved: number;
+  none: number;
+  errors: number;
+  remaining: number;
+}
+
+/**
+ * Drain the discovery backlog: run ATS discovery over companies already
+ * tracked for `userId` that are still 'pending' or 'error', up to `limit` per
+ * call. This is the "Resolve pending" button — it doesn't re-fetch the YC
+ * directory, it just works through what's already queued.
+ */
+export async function resolvePending(
+  userId: string,
+  { limit = 40, allowFirecrawl = true }: { limit?: number; allowFirecrawl?: boolean } = {},
+): Promise<ResolvePendingSummary> {
+  const queue = await db.trackedCompany.findMany({
+    where: {
+      userId,
+      discoveryStatus: { in: ["pending", "error"] },
+      website: { not: null },
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+
+  const summary: ResolvePendingSummary = {
+    attempted: queue.length,
+    resolved: 0,
+    none: 0,
+    errors: 0,
+    remaining: 0,
+  };
+
+  for (const row of queue) {
+    const outcome = await discoverAts(row.website!, { allowFirecrawl });
+    if (outcome.status === "resolved" && outcome.match) {
+      summary.resolved++;
+      await db.trackedCompany.update({
+        where: { id: row.id },
+        data: {
+          atsType: outcome.match.atsType,
+          atsToken: outcome.match.atsToken,
+          discoveryStatus: "resolved",
+          discoveryError: null,
+        },
+      });
+    } else if (outcome.status === "none") {
+      summary.none++;
+      await db.trackedCompany.update({
+        where: { id: row.id },
+        data: { discoveryStatus: "none" },
+      });
+    } else {
+      summary.errors++;
+      await db.trackedCompany.update({
+        where: { id: row.id },
+        data: { discoveryStatus: "error", discoveryError: outcome.error ?? "unknown" },
+      });
+    }
+  }
+
+  summary.remaining = await db.trackedCompany.count({
+    where: { userId, discoveryStatus: { in: ["pending", "error"] } },
+  });
+
+  return summary;
+}

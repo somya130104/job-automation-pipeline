@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, FileText, Info, Loader2, ShieldCheck } from "lucide-react";
+import { Check, FileText, Info, Loader2, ShieldCheck, X } from "lucide-react";
 import { TagInput } from "@/components/ui/TagInput";
 
 interface Props {
@@ -37,6 +37,30 @@ export function SettingsForm({ initial, resumes, authMode }: Props) {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(
     null,
   );
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function removeResume(id: string, fileName: string) {
+    if (
+      !window.confirm(
+        `Delete "${fileName}"? This removes it from the system for good.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/resume?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Delete failed");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function sendTest() {
     setTestBusy(true);
@@ -257,9 +281,29 @@ export function SettingsForm({ initial, resumes, authMode }: Props) {
                     {new Date(r.createdAt).toLocaleDateString()}
                   </p>
                 </div>
+                <button
+                  onClick={() => removeResume(r.id, r.fileName)}
+                  disabled={deletingId === r.id}
+                  aria-label={`Delete ${r.fileName}`}
+                  title="Delete this resume"
+                  className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-bad/10 hover:text-bad disabled:opacity-40"
+                >
+                  {deletingId === r.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="h-4 w-4" />
+                  )}
+                </button>
               </li>
             ))}
           </ul>
+        )}
+        {resumes.length > 0 && (
+          <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-muted">
+            <Info className="mt-0.5 h-3 w-3 shrink-0" />
+            Deleting the primary resume promotes the next newest one. Hit{" "}
+            <strong>Save changes</strong> afterwards to rescore the feed against it.
+          </p>
         )}
         <a href="/onboarding" className="btn btn-ghost mt-3 !py-2 text-xs">
           Upload another
