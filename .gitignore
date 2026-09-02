@@ -4,6 +4,8 @@ out/
 build/
 .env
 .env*.local
+.env.*
+!.env.example
 *.db
 *.db-journal
 prisma/dev.db*
@@ -17,4 +19,12 @@ next-env.d.ts
 .claude/
 skills-lock.json
 
-!.env.example
+
+# public images: commit the finished web images, ignore raw exports / junk
+# AI-generated source PNGs (8MB each) — kept local, optimized copies live in public/images/
+/images/
+public/images/*
+!public/images/*.png
+!public/images/*.jpg
+!public/images/*.jpeg
+!public/images/*.webp
