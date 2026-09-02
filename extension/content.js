@@ -80,9 +80,9 @@
   savePill.addEventListener("click", async () => {
     setState(savePill, "Reading page…", "#c9c2b6");
     const payload = await runInPage("__ksk_extract");
-    if (!payload || !payload.description || payload.description.length < 120) {
-      setState(savePill, "Couldn't read this page", "#e5484d");
-      setTimeout(() => setState(savePill, "★ Save to Kaam Se Kaam"), 2500);
+    if (!payload || !payload.title || (payload.description || "").length < 90) {
+      setState(savePill, "Can't read the full text here — open the job's own page", "#e5484d");
+      setTimeout(() => setState(savePill, "★ Save to Kaam Se Kaam"), 3200);
       return;
     }
     setState(savePill, "Saving…", "#c9c2b6");

@@ -10,29 +10,92 @@
     const el = document.querySelector(sel);
     return el ? clean(el.innerText || el.textContent) : "";
   };
-  const bigVisibleText = () => {
+  const bigVisibleText = (root) => {
     // Fallback: the largest text block on the page is almost always the JD.
     let best = "";
-    document.querySelectorAll("main, article, section, div").forEach((el) => {
+    (root || document).querySelectorAll("main, article, section, div").forEach((el) => {
       const t = clean(el.innerText);
       if (t.length > best.length && t.length < 20000) best = t;
     });
     return best;
   };
 
+  // LinkedIn's class names rotate constantly, so its extractors are built on
+  // stable anchors (every card links to /jobs/view/<id>) and reconstruct the
+  // company / location from the card's visible text lines instead.
+  const LI_NOISE =
+    /^(promoted|easy apply|be an early applicant|actively reviewing applicants|viewed|applicants?|see (all|how)|save|apply|share|·|\d+\s*(applicants?|connections?|company alumni|people clicked|school alumni)|responses managed|with verification|reposted|\d+\s*(hour|day|week|month)s?\s*ago)/i;
+
+  const liDetailRoot = () =>
+    document.querySelector(
+      ".jobs-search__job-details--container, .jobs-details__main-content, .job-view-layout, .jobs-details"
+    );
+
+  function liCard(anchor) {
+    let href = anchor.getAttribute("href") || "";
+    if (href.startsWith("/")) href = "https://www.linkedin.com" + href;
+    href = href.split("?")[0].split("#")[0];
+
+    const card =
+      anchor.closest("li") ||
+      anchor.closest("[data-occludable-job-id]") ||
+      anchor.closest("[data-job-id]") ||
+      anchor.closest("div.job-card-container") ||
+      anchor.parentElement;
+
+    const hidden = anchor.querySelector('span[aria-hidden="true"]');
+    const title = clean(
+      (hidden && hidden.innerText) || anchor.getAttribute("aria-label") || anchor.innerText
+    )
+      .replace(/^view job:?\s*/i, "")
+      .replace(/\s*(with verification|·.*)$/i, "");
+
+    let lines = clean(card ? card.innerText : "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    lines = lines.filter((l, i) => l !== lines[i - 1]); // a11y dupes
+    lines = lines.filter((l) => l !== title && !LI_NOISE.test(l));
+
+    return {
+      url: href,
+      title,
+      company: lines[0] || "",
+      location: lines[1] || "",
+      description: lines.slice(2).join(". "),
+    };
+  }
+
   const EXTRACTORS = {
-    "linkedin.com": () => ({
-      title: textOf(".job-details-jobs-unified-top-card__job-title, .topcard__title, h1"),
-      company: textOf(
-        ".job-details-jobs-unified-top-card__company-name, .topcard__org-name-link, .jobs-unified-top-card__company-name"
-      ),
-      location: textOf(
-        ".job-details-jobs-unified-top-card__bullet, .topcard__flavor--bullet, .jobs-unified-top-card__bullet"
-      ),
-      description: textOf(
-        "#job-details, .jobs-description__content, .show-more-less-html__markup, .description__text"
-      ),
-    }),
+    "linkedin.com": () => {
+      const root = liDetailRoot() || document;
+      const pick = (sels) => {
+        for (const s of sels.split(",")) {
+          const el = root.querySelector(s.trim()) || document.querySelector(s.trim());
+          const t = el && clean(el.innerText || el.textContent);
+          if (t) return t;
+        }
+        return "";
+      };
+      let description = pick(
+        "#job-details, .jobs-description__content .jobs-box__html-content, .jobs-description-content__text, .jobs-description__container, .jobs-box__html-content, article"
+      );
+      if (description.length < 160 && root !== document) {
+        description = bigVisibleText(root) || description;
+      }
+      return {
+        title: pick(
+          ".job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, .topcard__title, h1"
+        ),
+        company: pick(
+          ".job-details-jobs-unified-top-card__company-name a, .job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name a, .jobs-unified-top-card__company-name, .topcard__org-name-link, .artdeco-entity-lockup__subtitle"
+        ),
+        location: pick(
+          ".job-details-jobs-unified-top-card__primary-description-container, .job-details-jobs-unified-top-card__bullet, .jobs-unified-top-card__bullet, .topcard__flavor--bullet"
+        ),
+        description,
+      };
+    },
     "naukri.com": () => ({
       title: textOf(".styles_jd-header-title__rZwM1, h1.jd-header-title, section.job-desc h1, h1"),
       company: textOf(
@@ -97,47 +160,22 @@
 
   const LIST_EXTRACTORS = {
     "linkedin.com": () => {
-      const cards = document.querySelectorAll(
-        "li.scaffold-layout__list-item, div.job-card-container, li.jobs-search-results__list-item, div.job-card-job-posting-card-wrapper"
-      );
-      return Array.from(cards).map((card) => {
-        let href = attr(card, [
-          'a.job-card-container__link[href*="/jobs/view/"]',
-          'a.job-card-list__title[href*="/jobs/view/"]',
-          'a[href*="/jobs/view/"]',
-        ]);
-        const idEl = card.matches("[data-job-id]")
-          ? card
-          : card.querySelector("[data-job-id]");
-        const jobId = idEl && idEl.getAttribute("data-job-id");
-        if (!href && jobId) href = `https://www.linkedin.com/jobs/view/${jobId}/`;
-        if (href && href.startsWith("/")) href = "https://www.linkedin.com" + href;
-        return {
-          url: (href || "").split("?")[0],
-          title: inCard(card, [
-            "a.job-card-list__title",
-            "a.job-card-container__link",
-            ".job-card-list__title--link",
-            ".artdeco-entity-lockup__title",
-            "h3",
-          ]),
-          company: inCard(card, [
-            ".artdeco-entity-lockup__subtitle",
-            ".job-card-container__primary-description",
-            ".job-card-container__company-name",
-            "h4",
-          ]),
-          location: inCard(card, [
-            ".job-card-container__metadata-item",
-            ".artdeco-entity-lockup__caption",
-            ".job-card-container__metadata-wrapper li",
-          ]),
-          description: inCard(card, [
-            ".job-card-list__footer-wrapper",
-            ".job-card-container__metadata-wrapper",
-          ]),
-        };
+      // One card can hold several /jobs/view/ links (title, logo, footer) —
+      // keep the anchor with the most text per card.
+      const cardMap = new Map();
+      document.querySelectorAll('a[href*="/jobs/view/"]').forEach((a) => {
+        const card =
+          a.closest("li") ||
+          a.closest("[data-occludable-job-id]") ||
+          a.closest("[data-job-id]") ||
+          a.closest("div.job-card-container") ||
+          a.parentElement;
+        if (!card) return;
+        const weight = (a.getAttribute("aria-label") || a.innerText || "").length;
+        const prev = cardMap.get(card);
+        if (!prev || weight > prev.weight) cardMap.set(card, { a, weight });
       });
+      return Array.from(cardMap.values()).map(({ a }) => liCard(a));
     },
     "naukri.com": () => {
       const cards = document.querySelectorAll(
@@ -192,12 +230,15 @@
   window.__ksk_extract = function () {
     const key = hostKey();
     let data = key ? EXTRACTORS[key]() : {};
-    if (!data.description || data.description.length < 120) {
+    if (!data.description || data.description.length < 90) {
+      // On LinkedIn a whole-page scan grabs the left results rail — confine it
+      // to the detail pane.
+      const root = key === "linkedin.com" ? liDetailRoot() : null;
       data = {
         title: data.title || textOf("h1") || clean(document.title),
         company: data.company || "",
         location: data.location || "",
-        description: bigVisibleText(),
+        description: bigVisibleText(root || undefined) || data.description || "",
       };
     }
     return {
