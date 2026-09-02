@@ -6,16 +6,20 @@ import { scoreJob } from "./score";
 /**
  * Recompute MatchScore rows for a user.
  *
- * Called after onboarding, resume upload, profile edits and ingestion.
- * Keyword/title/experience/location scoring is pure and cheap. The semantic
- * term needs embeddings:
- *   - the resume is embedded once per rescore (cached by content hash);
- *   - each job is embedded once ever (cached on Job.embedding by content hash),
- *     so the cost is paid on first sight and never again.
+ * Called after onboarding, resume upload, profile edits and ingestion, all of
+ * which are request-scoped — so this MUST stay fast and MUST NOT block on the
+ * embedding API.
  *
- * `skipEmbeddings` runs the fast keyword-only path (used when the model isn't
- * wanted in a given environment); the scorer redistributes the semantic weight
- * so scores stay sensible.
+ * Rules:
+ *   - The résumé is embedded once per rescore (one API call, cached by hash).
+ *   - Jobs are NEVER embedded here. We only read a job's pre-computed
+ *     `Job.embedding` (filled by `scripts/embed.ts` / the ingest backfill).
+ *     A job without an embedding is simply scored keyword-only — the scorer
+ *     redistributes the semantic weight so the number stays sensible.
+ *   - If the résumé embed fails (e.g. quota) we drop straight to keyword-only
+ *     for the whole run rather than retrying per job.
+ *
+ * `skipEmbeddings` forces the keyword-only path outright.
  */
 export async function rescoreUser(
   userId: string,
@@ -59,13 +63,14 @@ export async function rescoreUser(
       resumeVec = parseEmbedding(resume.embedding);
     } else {
       try {
-        resumeVec = await embed(resumeText);
+        // One call, minimal retry — a request handler is waiting on this.
+        resumeVec = await embed(resumeText, 1);
         await db.resume.update({
           where: { id: resume.id },
           data: { embedding: writeList(resumeVec), embeddingHash: hash },
         });
       } catch {
-        resumeVec = null; // model unavailable -> fall back to keyword-only
+        resumeVec = null; // embedding API unavailable -> keyword-only run
       }
     }
   }
@@ -80,32 +85,19 @@ export async function rescoreUser(
       remoteType: true,
       employmentType: true,
       embedding: true,
-      embeddingHash: true,
     },
   });
 
-  let embedded = 0;
+  const embedded = 0;
 
   for (const job of jobs) {
-    // --- job embedding (cached forever on the row) ---
+    // Use the job's pre-computed embedding if it has one; never generate here.
     let similarity: number | undefined;
     if (useEmbeddings && resumeVec) {
-      const jobText = `${job.title}\n${job.descriptionText.slice(0, 3500)}`;
-      const hash = embedHash(jobText);
-      let jobVec = job.embeddingHash === hash ? parseEmbedding(job.embedding) : null;
-      if (!jobVec) {
-        try {
-          jobVec = await embed(jobText);
-          await db.job.update({
-            where: { id: job.id },
-            data: { embedding: writeList(jobVec), embeddingHash: hash },
-          });
-          embedded++;
-        } catch {
-          jobVec = null;
-        }
+      const jobVec = parseEmbedding(job.embedding);
+      if (jobVec && jobVec.length === resumeVec.length) {
+        similarity = cosine(resumeVec, jobVec);
       }
-      if (jobVec) similarity = cosine(resumeVec, jobVec);
     }
 
     const result = scoreJob({

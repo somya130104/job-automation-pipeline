@@ -5,6 +5,8 @@ import { readList, writeList } from "@/lib/json-list";
 import { rescoreUser } from "@/lib/matching/rescore";
 
 export const runtime = "nodejs";
+// A full keyword rescore upserts one MatchScore row per job.
+export const maxDuration = 60;
 
 interface ProfileBody {
   targetRoles: string[];
