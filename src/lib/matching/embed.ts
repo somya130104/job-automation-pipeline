@@ -45,61 +45,64 @@ function clean(text: string): string {
 
 class EmbedError extends Error {}
 
-/** Embed one string -> 768-d unit vector. */
-export async function embed(text: string): Promise<number[]> {
-  const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) throw new EmbedError("GEMINI_API_KEY not set");
-
-  const res = await fetch(`${BASE}/${MODEL}:embedContent?key=${key}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      content: { parts: [{ text: clean(text) }] },
-      outputDimensionality: DIM,
-    }),
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!res.ok) {
-    throw new EmbedError(`Gemini embed ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  }
-  const data = (await res.json()) as { embedding?: { values?: number[] } };
-  const values = data.embedding?.values;
-  if (!values?.length) throw new EmbedError("Gemini embed returned no vector");
-  return normalise(values);
-}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Embed many strings via batchEmbedContents. Chunked at 100 (API cap) with a
- * small delay between chunks to stay well under the free-tier rate limit.
+ * Embed one string -> 768-d unit vector.
+ *
+ * Retries 429s (the free tier caps embedding calls per minute) with
+ * exponential backoff. Other errors fail fast so the caller can fall back to
+ * keyword-only scoring.
  */
-export async function embedMany(texts: string[], chunk = 100): Promise<number[][]> {
+export async function embed(text: string, retries = 4): Promise<number[]> {
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) throw new EmbedError("GEMINI_API_KEY not set");
 
-  const out: number[][] = [];
-  for (let i = 0; i < texts.length; i += chunk) {
-    const slice = texts.slice(i, i + chunk);
-    const res = await fetch(`${BASE}/${MODEL}:batchEmbedContents?key=${key}`, {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${BASE}/${MODEL}:embedContent?key=${key}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        requests: slice.map((t) => ({
-          model: `models/${MODEL}`,
-          content: { parts: [{ text: clean(t) }] },
-          outputDimensionality: DIM,
-        })),
+        content: { parts: [{ text: clean(text) }] },
+        outputDimensionality: DIM,
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(20_000),
     });
+
+    if (res.status === 429 && attempt < retries) {
+      await sleep(2_000 * 2 ** attempt); // 2s, 4s, 8s, 16s
+      continue;
+    }
     if (!res.ok) {
-      throw new EmbedError(`Gemini batch embed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      throw new EmbedError(`Gemini embed ${res.status}: ${(await res.text()).slice(0, 200)}`);
     }
-    const data = (await res.json()) as { embeddings?: Array<{ values?: number[] }> };
-    for (const e of data.embeddings ?? []) {
-      out.push(normalise(e.values ?? []));
-    }
-    if (i + chunk < texts.length) await new Promise((r) => setTimeout(r, 300));
+    const data = (await res.json()) as { embedding?: { values?: number[] } };
+    const values = data.embedding?.values;
+    if (!values?.length) throw new EmbedError("Gemini embed returned no vector");
+    return normalise(values);
   }
+}
+
+/**
+ * Embed many strings. The free-tier batchEmbedContents endpoint counts each
+ * item against a low per-minute quota and 429s almost immediately, so this
+ * fans out single `embed()` calls at a bounded concurrency instead — each with
+ * its own 429 backoff. Slower but it actually completes on the free tier.
+ */
+export async function embedMany(texts: string[], concurrency = 4): Promise<number[][]> {
+  const out: number[][] = new Array(texts.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < texts.length) {
+      const i = next++;
+      out[i] = await embed(texts[i]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, texts.length) }, worker),
+  );
   return out;
 }
 
