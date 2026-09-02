@@ -79,6 +79,11 @@ export function JobCard({ job, index }: { job: JobCardData; index: number }) {
               <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
               <span className="truncate">{job.company}</span>
             </p>
+            {job.score < 35 && (
+              <p className="mt-1 font-mono text-[10px] italic text-muted/70">
+                Could this BE any more of a stretch?
+              </p>
+            )}
           </div>
           <ScoreRing score={job.score} size={48} />
         </div>

@@ -4,6 +4,7 @@ import { LiveCounter } from "@/components/chrome/LiveCounter";
 import { ThemeSwitcher } from "@/components/chrome/ThemeSwitcher";
 import { LiveFeedDock, type FeedItem } from "@/components/chrome/LiveFeedDock";
 import { HeroPills } from "@/components/landing/HeroPills";
+import { PhotoBackdrop } from "@/components/landing/PhotoBackdrop";
 import { SourceMarquee } from "@/components/landing/SourceMarquee";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { AuthedLink } from "@/components/landing/AuthedLink";
@@ -37,7 +38,9 @@ export default async function LandingPage() {
     <>
       <main className="relative">
         {/* ============ HERO ============ */}
-        <section className="grain hero-wash relative flex min-h-[100svh] flex-col overflow-hidden">
+        <section className="grain relative flex min-h-[100svh] flex-col overflow-hidden">
+          <PhotoBackdrop src="/images/hero.jpg" priority />
+
           {/* --- top chrome row --- */}
           <div className="relative z-10 flex items-start justify-between gap-3 p-4 sm:p-6">
             <LiveCounter />
@@ -112,7 +115,7 @@ export default async function LandingPage() {
           <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-hairline md:grid-cols-4">
             <Stat value={jobCount.toLocaleString("en-IN")} label="Live postings" />
             <Stat value={String(companyGroups.length)} label="Companies tracked" />
-            <Stat value="7" label="Sources wired" />
+            <Stat value="9" label="Sources wired" />
             <Stat value="0" label="Scrapers used" accent />
           </div>
         </section>
@@ -121,11 +124,22 @@ export default async function LandingPage() {
         <HowItWorks />
 
         {/* ============ SOURCES ============ */}
-        <section id="sources" className="mx-auto max-w-7xl px-4 py-20 sm:py-28">
+        <section
+          id="sources"
+          className="relative overflow-hidden px-4 py-20 sm:py-28"
+        >
+          <PhotoBackdrop
+            src="/images/workspace.jpg"
+            className="opacity-[0.28]"
+          />
+          <div className="relative z-10 mx-auto max-w-7xl">
           <p className="label-mono mb-3 !text-accent">Where the jobs come from</p>
           <h2 className="display max-w-[18ch] text-[clamp(2rem,5.5vw,4rem)]">
             No scrapers. No banned accounts.
           </h2>
+          <p className="mt-3 max-w-[62ch] font-mono text-xs text-muted">
+            A working knowledge of every job board and everything in it.
+          </p>
           <p className="mt-5 max-w-[62ch] text-paper/70">
             Almost every tech company&apos;s careers page runs on an applicant
             tracking system that publishes a public, no-auth JSON feed — because
@@ -160,13 +174,15 @@ export default async function LandingPage() {
             />
             <SourceCard
               name="Browser extension"
-              detail="Phase 3"
+              detail="Manifest V3"
               note="One-click capture from a LinkedIn or Naukri page you're already reading. User-initiated, not automated."
+              live
             />
             <SourceCard
               name="Career pages"
-              detail="Phase 3"
-              note="Firecrawl discovers a company's ATS token once, then polls its API forever after."
+              detail="Firecrawl + Gemini"
+              note="Discovers a company's ATS token once, then polls its API forever after. HN 'Who is hiring' and the YC directory feed in too."
+              live
             />
           </div>
 
@@ -179,10 +195,12 @@ export default async function LandingPage() {
               extension capture flow solves the same problem without the risk.
             </p>
           </div>
+          </div>
         </section>
 
         {/* ============ CTA ============ */}
-        <section className="grain hero-wash relative overflow-hidden border-t border-hairline">
+        <section className="grain relative overflow-hidden border-t border-hairline">
+          <PhotoBackdrop src="/images/rooftop.jpg" />
           <div className="relative z-10 mx-auto max-w-3xl px-4 py-24 text-center sm:py-32">
             <h2 className="display display-outlined text-[clamp(2.2rem,7vw,5rem)]">
               Upload the resume.

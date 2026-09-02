@@ -102,6 +102,9 @@ export default async function InsightsPage() {
         <div>
           <p className="label-mono mb-1.5 !text-accent">Resume insights</p>
           <h1 className="display text-4xl sm:text-5xl">What to fix next</h1>
+          <p className="mt-2 font-mono text-xs text-muted">
+            We&apos;re basically Donna about your hunt — we know everything.
+          </p>
         </div>
 
         {!resume ? (
@@ -118,7 +121,11 @@ export default async function InsightsPage() {
           <>
             {/* ---------- funnel ---------- */}
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatTile label="Applications sent" value={String(counts.applied)} />
+              <StatTile
+                label="Applications sent"
+                value={String(counts.applied)}
+                hint={`Kitne applications the? Poore ${counts.applied}, sardar.`}
+              />
               <StatTile
                 label="Response rate"
                 value={responseRate === null ? "—" : `${responseRate}%`}
@@ -170,6 +177,9 @@ export default async function InsightsPage() {
                 <ScoreRing score={resume.atsScore} size={80} label="ATS" />
                 <div>
                   <h2 className="display mb-1.5 text-2xl">ATS readability</h2>
+                  <p className="mb-1.5 font-mono text-xs italic text-muted">
+                    First impressions last.
+                  </p>
                   <p className="max-w-[58ch] text-sm leading-relaxed text-paper/65">
                     Scores whether a machine can parse your resume, not whether
                     it reads well. If our own parser can&apos;t find your dates
@@ -253,7 +263,15 @@ export default async function InsightsPage() {
 
             {/* ---------- source health ---------- */}
             <section className="panel p-6">
-              <h2 className="display mb-1.5 text-2xl">Source health</h2>
+              <div className="mb-1.5 flex items-center gap-2.5">
+                <h2 className="display text-2xl">Source health</h2>
+                {[...bySource.values()].length > 0 &&
+                  [...bySource.values()].every((s) => s.failed === 0) && (
+                    <span className="rounded-full bg-good/15 px-2 py-0.5 font-mono text-[10px] font-bold text-good">
+                      Aal izz well
+                    </span>
+                  )}
+              </div>
               <p className="mb-6 max-w-[64ch] text-sm leading-relaxed text-paper/65">
                 Companies migrate between applicant tracking systems, and a board
                 that starts returning 404 would otherwise just look like

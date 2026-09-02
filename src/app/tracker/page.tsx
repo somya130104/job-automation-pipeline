@@ -5,6 +5,7 @@ import { readList } from "@/lib/json-list";
 import { AppNav } from "@/components/chrome/AppNav";
 import { KanbanBoard, type TrackedApplication } from "@/components/tracker/KanbanBoard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import Image from "next/image";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -65,8 +66,18 @@ export default async function TrackerPage() {
     <>
       <AppNav />
 
-      <main className="mx-auto max-w-[1600px] px-4 pb-32 pt-8">
-        <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <main className="relative mx-auto max-w-[1600px] px-4 pb-32 pt-8">
+        {/* stamped / approved motif */}
+        <Image
+          src="/images/stamp.jpg"
+          alt=""
+          aria-hidden
+          width={420}
+          height={229}
+          className="pointer-events-none absolute right-2 top-0 hidden w-[min(38vw,420px)] -translate-y-1/4 rotate-2 rounded-xl opacity-[0.14] mix-blend-luminosity lg:block"
+        />
+
+        <div className="relative z-10 mb-7 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="label-mono mb-1.5 !text-accent">Application tracker</p>
             <h1 className="display text-4xl sm:text-5xl">
@@ -80,7 +91,10 @@ export default async function TrackerPage() {
                 {dueCount} follow-up{dueCount > 1 ? "s" : ""} due
               </p>
               <p className="text-xs text-paper/60">
-                No response after 7 days — worth a nudge.
+                No response after 7 days — worth a nudge.{" "}
+                <span className="italic text-muted">
+                  Tension lene ka nahi, dene ka.
+                </span>
               </p>
             </div>
           )}

@@ -20,12 +20,12 @@ export interface TrackedApplication {
   hasSnapshot: boolean;
 }
 
-const COLUMNS = [
-  { id: "saved", label: "Saved" },
+const COLUMNS: Array<{ id: string; label: string; sub?: string }> = [
+  { id: "saved", label: "Saved", sub: "That's my spot." },
   { id: "applied", label: "Applied" },
   { id: "interviewing", label: "Interviewing" },
-  { id: "offer", label: "Offer" },
-  { id: "rejected", label: "Rejected / Ghosted" },
+  { id: "offer", label: "Offer", sub: "Mogambo khush hua." },
+  { id: "rejected", label: "Rejected / Ghosted", sub: "We were on a break." },
 ];
 
 export function KanbanBoard({ initial }: { initial: TrackedApplication[] }) {
@@ -83,11 +83,18 @@ export function KanbanBoard({ initial }: { initial: TrackedApplication[] }) {
             }`}
             aria-label={column.label}
           >
-            <header className="mb-2.5 flex items-center justify-between px-1.5 pt-1">
-              <h2 className="label-mono !text-[10px]">{column.label}</h2>
-              <span className="rounded-full bg-hairline px-1.5 text-[10px] font-bold tabular-nums">
-                {columnItems.length}
-              </span>
+            <header className="mb-2.5 px-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <h2 className="label-mono !text-[10px]">{column.label}</h2>
+                <span className="rounded-full bg-hairline px-1.5 text-[10px] font-bold tabular-nums">
+                  {columnItems.length}
+                </span>
+              </div>
+              {column.sub && (
+                <p className="mt-0.5 font-mono text-[9px] italic text-muted/70">
+                  {column.sub}
+                </p>
+              )}
             </header>
 
             <div className="flex flex-1 flex-col gap-2">
@@ -180,7 +187,10 @@ function Card({
           </span>
         )}
         {followUpDue && (
-          <span className="flex items-center gap-1 text-[10px] font-bold text-warn">
+          <span
+            className="flex items-center gap-1 text-[10px] font-bold text-warn"
+            title="Knock, knock, knock. Day 7, still no reply."
+          >
             <AlarmClock className="h-3 w-3" />
             Follow up
           </span>

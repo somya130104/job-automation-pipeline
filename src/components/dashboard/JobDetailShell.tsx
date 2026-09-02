@@ -172,7 +172,16 @@ export function JobDetailShell({
             </div>
           </div>
 
-          {score && <ScoreRing score={score.total} size={64} showBand />}
+          {score && (
+            <div className="flex flex-col items-center">
+              <ScoreRing score={score.total} size={64} showBand />
+              {score.total >= 75 && (
+                <span className="mt-1 font-mono text-[9px] font-bold uppercase tracking-wide text-accent">
+                  You just got Litt up
+                </span>
+              )}
+            </div>
+          )}
 
           <button
             onClick={close}
@@ -339,6 +348,7 @@ export function JobDetailShell({
             target="_blank"
             rel="noopener noreferrer"
             className="btn btn-primary"
+            title="Ek chance toh banta hai."
           >
             Apply on {job.company}
             <ExternalLink className="h-3.5 w-3.5" />
@@ -614,6 +624,9 @@ function ReferralChecklist({ company }: { company: string }) {
         <Users className="h-3.5 w-3.5" /> Referral checklist
       </p>
       <p className="mb-3 text-[11px] leading-relaxed text-muted">
+        <span className="italic text-paper/60">
+          Don&apos;t play the odds. Play the man.
+        </span>{" "}
         A referral into {company} beats a cold application. Your network
         isn&apos;t reachable through any API, so this is a manual two-minute
         pass every time you save a role.

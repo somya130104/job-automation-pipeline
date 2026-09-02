@@ -152,11 +152,12 @@ export default async function DashboardPage({
 
         {cards.length === 0 ? (
           <EmptyState
+            quip="The one where nothing matches your filters."
             title="Nothing matches those filters"
             body={
               total === 0 && minScore > 0
-                ? "Try lowering the minimum score — your current floor is filtering everything out."
-                : "Loosen a filter, or pull a fresh batch of postings from the boards."
+                ? "Backed against the wall? Break the damn thing down — lower the minimum score, your current floor is filtering everything out."
+                : "Backed against the wall? Break the damn thing down — loosen a filter, or pull a fresh batch of postings from the boards."
             }
           />
         ) : (

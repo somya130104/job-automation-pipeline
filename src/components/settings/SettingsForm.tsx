@@ -277,6 +277,11 @@ export function SettingsForm({ initial, resumes, authMode }: Props) {
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}
           {busy ? "Saving & rescoring…" : "Save changes"}
         </button>
+        {busy && (
+          <span className="font-mono text-xs italic text-muted">
+            Change is never fine. They say it is, but it&apos;s not.
+          </span>
+        )}
         {saved && (
           <span className="flex items-center gap-1.5 text-sm font-bold text-good">
             <Check className="h-4 w-4" />

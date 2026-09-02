@@ -34,7 +34,10 @@ export function LiveCounter() {
   }, []);
 
   return (
-    <div className="pill" title="People job hunting right now">
+    <div
+      className="pill"
+      title={`Fun fact: ${count.toLocaleString("en-IN")} other people are on the job boards right now.`}
+    >
       <span className="relative flex h-2 w-2" aria-hidden>
         <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-good" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-good" />

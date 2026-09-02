@@ -322,8 +322,11 @@ export function OnboardingFlow({ initial }: Props) {
         {step === 2 && (
           <Panel key="targets">
             <h1 className="display mb-2 text-4xl">What are you after?</h1>
-            <p className="mb-7 text-sm text-paper/65">
+            <p className="mb-1 text-sm text-paper/65">
               This drives the ranking. Job titles matter most.
+            </p>
+            <p className="mb-7 font-mono text-xs text-muted">
+              &ldquo;I don&apos;t have dreams. I have goals.&rdquo;
             </p>
 
             <Field label="Looking for">
@@ -345,7 +348,10 @@ export function OnboardingFlow({ initial }: Props) {
               {roleType === "internship" && (
                 <p className="mt-2 text-xs leading-relaxed text-muted">
                   Internship mode down-weights years-of-experience and leans on
-                  skills instead, so projects and coursework count properly.
+                  skills instead, so projects and coursework count properly.{" "}
+                  <span className="text-paper/50">
+                    Kaamyaabi ke peeche mat bhaago, kaabil bano.
+                  </span>
                 </p>
               )}
             </Field>
