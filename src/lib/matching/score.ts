@@ -190,12 +190,12 @@ export function scoreJob(input: ScoreInput): ScoreResult {
     profile.remoteOnly,
   );
 
-  // all-MiniLM cosine for related-but-not-identical text sits in a compressed
-  // band (~0.2 unrelated .. ~0.75 strong). Stretch that to 0..1 so it can
-  // actually pull its weight in the blend.
+  // gemini-embedding-001 cosine for English text sits in a compressed, shifted
+  // band: unrelated role pairs ~0.45-0.55, strong matches ~0.72-0.82. Stretch
+  // that window to 0..1 so the term can actually pull its weight in the blend.
   const hasSemantic = typeof input.semanticSimilarity === "number";
   const semantic = hasSemantic
-    ? clamp01((input.semanticSimilarity! - 0.15) / 0.55)
+    ? clamp01((input.semanticSimilarity! - 0.48) / 0.3)
     : 0;
 
   // When we don't have an embedding yet, spread the semantic weight across the

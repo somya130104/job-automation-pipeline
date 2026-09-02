@@ -2,15 +2,21 @@
 // SQLite for zero-setup local dev. SQLite has no scalar lists, so every
 // string[] in the concept doc is stored as a JSON-encoded string and read
 // back through the helpers in src/lib/json-list.ts.
-// Swapping to Postgres later = change `provider` + `DATABASE_URL` only.
+// Postgres in every environment now (Neon). SQLite had no scalar lists, so
+// every string[] from the concept doc is still stored as a JSON-encoded string
+// and read back through src/lib/json-list.ts — that stays, it's harmless on
+// Postgres and keeps the schema identical across a future pgvector move.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection for the app (Neon/Supabase pgbouncer). Prisma migrate
+  // and `db push` use DIRECT_URL, an unpooled connection.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

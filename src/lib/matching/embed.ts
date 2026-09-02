@@ -1,59 +1,109 @@
 import { createHash } from "node:crypto";
 
 /**
- * Local sentence embeddings via @xenova/transformers (all-MiniLM-L6-v2, 384-d).
- * Runs fully on-device, zero API cost. The model (~90MB) downloads once on the
- * first call and is then cached under node_modules/@xenova/transformers/.cache.
+ * Sentence embeddings via the Gemini embedding API (gemini-embedding-001).
  *
- * SQLite has no vector column, so embeddings are stored as JSON float arrays
- * on Job.embedding / Resume.embedding and cosine similarity is computed in JS.
- * With a few thousand jobs that is entirely fine; the pgvector path is a
- * drop-in swap when this moves to Supabase (change storage + the query, not
- * the scoring math).
+ * This used to run all-MiniLM-L6-v2 locally through @xenova/transformers, but
+ * that pulls ~180MB of onnxruntime native binaries which blows Vercel's
+ * serverless function size limit. Gemini embeddings are one HTTP call, no
+ * native deps, and the key is already configured.
+ *
+ * SQLite/Postgres both store the vector as a JSON float array on
+ * Job.embedding / Resume.embedding; cosine similarity is computed in JS. The
+ * pgvector path is a drop-in swap when it's worth it (change storage + the
+ * query, not the scoring math).
+ *
+ * Requesting a reduced 768-dim vector (Matryoshka) keeps rows small. Truncated
+ * Gemini embeddings are NOT unit-norm, so we renormalise here.
  */
 
-const MODEL = "Xenova/all-MiniLM-L6-v2";
+const MODEL = "gemini-embedding-001";
+const DIM = 768;
+const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let pipePromise: Promise<any> | null = null;
+/** Model tag folded into the cache key so a model change invalidates vectors. */
+const EMBED_TAG = `${MODEL}@${DIM}`;
 
-async function getPipe() {
-  if (!pipePromise) {
-    pipePromise = import("@xenova/transformers").then(async (mod) => {
-      // Quantised weights: ~1/4 the size, no measurable quality loss for
-      // similarity ranking.
-      mod.env.allowLocalModels = false;
-      return mod.pipeline("feature-extraction", MODEL, { quantized: true });
-    });
-  }
-  return pipePromise;
+export function embeddingsEnabled(): boolean {
+  return Boolean(process.env.GEMINI_API_KEY?.trim());
 }
 
 export function embedHash(text: string): string {
-  return createHash("sha256").update(text).digest("hex").slice(0, 16);
+  return createHash("sha256").update(`${EMBED_TAG}\n${text}`).digest("hex").slice(0, 20);
 }
 
-/** Embed one string -> 384-d unit vector (mean-pooled, normalised). */
+function normalise(v: number[]): number[] {
+  let n = 0;
+  for (const x of v) n += x * x;
+  n = Math.sqrt(n);
+  return n === 0 ? v : v.map((x) => x / n);
+}
+
+function clean(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 8000) || "empty";
+}
+
+class EmbedError extends Error {}
+
+/** Embed one string -> 768-d unit vector. */
 export async function embed(text: string): Promise<number[]> {
-  const pipe = await getPipe();
-  const clean = text.replace(/\s+/g, " ").trim().slice(0, 4000);
-  const output = await pipe(clean || "empty", { pooling: "mean", normalize: true });
-  return Array.from(output.data as Float32Array);
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key) throw new EmbedError("GEMINI_API_KEY not set");
+
+  const res = await fetch(`${BASE}/${MODEL}:embedContent?key=${key}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      content: { parts: [{ text: clean(text) }] },
+      outputDimensionality: DIM,
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) {
+    throw new EmbedError(`Gemini embed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { embedding?: { values?: number[] } };
+  const values = data.embedding?.values;
+  if (!values?.length) throw new EmbedError("Gemini embed returned no vector");
+  return normalise(values);
 }
 
-/** Embed many strings with a small batch size to bound memory. */
-export async function embedMany(texts: string[], batch = 16): Promise<number[][]> {
+/**
+ * Embed many strings via batchEmbedContents. Chunked at 100 (API cap) with a
+ * small delay between chunks to stay well under the free-tier rate limit.
+ */
+export async function embedMany(texts: string[], chunk = 100): Promise<number[][]> {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key) throw new EmbedError("GEMINI_API_KEY not set");
+
   const out: number[][] = [];
-  for (let i = 0; i < texts.length; i += batch) {
-    const slice = texts.slice(i, i + batch);
-    out.push(...(await Promise.all(slice.map(embed))));
+  for (let i = 0; i < texts.length; i += chunk) {
+    const slice = texts.slice(i, i + chunk);
+    const res = await fetch(`${BASE}/${MODEL}:batchEmbedContents?key=${key}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requests: slice.map((t) => ({
+          model: `models/${MODEL}`,
+          content: { parts: [{ text: clean(t) }] },
+          outputDimensionality: DIM,
+        })),
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      throw new EmbedError(`Gemini batch embed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { embeddings?: Array<{ values?: number[] }> };
+    for (const e of data.embeddings ?? []) {
+      out.push(normalise(e.values ?? []));
+    }
+    if (i + chunk < texts.length) await new Promise((r) => setTimeout(r, 300));
   }
   return out;
 }
 
-/** Cosine similarity of two equal-length vectors. Inputs are already unit
- * vectors from `embed`, so this is just the dot product — kept explicit for
- * when a caller passes non-normalised input. */
+/** Cosine similarity. Inputs from `embed`/`embedMany` are unit vectors. */
 export function cosine(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
   let dot = 0;

@@ -127,7 +127,7 @@ async function main() {
 
   console.log("\n─── metrics ───────────────────────────────────────────");
   console.log(`  fixture              ${jobs.length} jobs (${goodTotal} good, ${jobs.length - goodTotal} bad)`);
-  console.log(`  embeddings           ${noEmbed ? "OFF (keyword-only path)" : "on (all-MiniLM-L6-v2)"}`);
+  console.log(`  embeddings           ${noEmbed ? "OFF (keyword-only path)" : "on (gemini-embedding-001, 768d)"}`);
   console.log(`  precision@10         ${pct(precisionAt10)}`);
   console.log(`  recall@10            ${pct(recallAt10)}`);
   console.log(`  MRR                  ${mrr.toFixed(3)} (first good at rank ${firstGoodRank})`);
