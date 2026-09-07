@@ -193,11 +193,15 @@ export default async function LandingPage() {
 
           <div className="panel mt-8 border-l-4 !border-l-accent p-5">
             <p className="text-sm leading-relaxed text-paper/80">
-              <strong className="text-accent">What this deliberately won&apos;t do:</strong>{" "}
-              scrape LinkedIn or Naukri, store your credentials for them,
-              auto-submit applications, or collect private recruiter contact
-              details. Those get accounts banned and aren&apos;t worth it — the
-              extension capture flow solves the same problem without the risk.
+              <strong className="text-accent">
+                How LinkedIn, Naukri &amp; Wellfound get in:
+              </strong>{" "}
+              those three don&apos;t hand out a feed, so a one-click browser
+              extension reads the posting you&apos;re already looking at — title,
+              company, description — and drops it into your tracker, scored like
+              every other job. It only ever reads the page in front of you, on
+              your click, in your own session: no credentials stored, no pages
+              crawled, no applications auto-submitted.
             </p>
           </div>
           </div>
