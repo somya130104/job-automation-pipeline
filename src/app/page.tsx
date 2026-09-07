@@ -13,12 +13,17 @@ import { AuthedLink } from "@/components/landing/AuthedLink";
 export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
-  const [jobCount, companyGroups, recent] = await Promise.all([
+  const [jobCount, companyGroups, sourceGroups, recent] = await Promise.all([
     db.job.count({ where: { status: "open" } }),
     db.job.findMany({
       where: { status: "open" },
       select: { company: true },
       distinct: ["company"],
+    }),
+    db.job.findMany({
+      where: { status: "open" },
+      select: { source: true },
+      distinct: ["source"],
     }),
     db.job.findMany({
       where: { status: "open" },
@@ -115,7 +120,7 @@ export default async function LandingPage() {
           <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-hairline md:grid-cols-4">
             <Stat value={jobCount.toLocaleString("en-IN")} label="Live postings" />
             <Stat value={String(companyGroups.length)} label="Companies tracked" />
-            <Stat value="9" label="Sources wired" />
+            <Stat value={String(sourceGroups.length)} label="Sources wired" />
             <Stat value="0" label="Scrapers used" accent />
           </div>
         </section>
