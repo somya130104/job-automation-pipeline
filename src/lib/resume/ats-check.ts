@@ -241,6 +241,33 @@ export function checkAts(
     score -= 4;
   }
 
+  // Icon-font contact glyphs, LaTeX footnote markers (∗ † ‡) and letter-spaced
+  // headings ("L A T E X") come through an ATS parser as stray symbols and
+  // orphaned single characters. Cheap, reliable tells that the template wasn't
+  // built for machine parsing.
+  const strayLines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l.length > 0 &&
+        l.length <= 2 &&
+        !/^[•◦▪‣·*+\-–—]$/.test(l) &&
+        !/^\d{1,2}[.)]?$/.test(l),
+    ).length;
+  const letterSpaced = /(?:\b[A-Za-z]\s+){3,}[A-Za-z]\b/.test(text);
+  const daggerGlyphs = (text.match(/[†‡∗✱✲-]/g) ?? []).length;
+  if (strayLines >= 3 || letterSpaced || daggerGlyphs >= 4) {
+    push({
+      severity: "warning",
+      category: "parseability",
+      label: "Icon glyphs / stray characters in the extracted text",
+      detail:
+        "Contact-row icon fonts, footnote daggers (∗ † ‡) and letter-spaced words extract as garbled symbols or lone letters. Use plain-text labels ('Email:', 'GitHub:') and don't letter-space headings.",
+    });
+    score -= 7;
+  }
+
   /* ---------- CONTENT QUALITY ---------- */
 
   const totalBullets = bullets.length;
@@ -289,24 +316,6 @@ export function checkAts(
       score -= 5;
     }
 
-    // Verb repetition.
-    const verbCounts = new Map<string, number>();
-    for (const b of bullets) {
-      const v = firstWord(b);
-      if (STRONG_VERBS.has(v)) verbCounts.set(v, (verbCounts.get(v) ?? 0) + 1);
-    }
-    const repeated = [...verbCounts.entries()].filter(([, n]) => n > 3);
-    if (repeated.length) {
-      push({
-        severity: "info",
-        category: "content",
-        label: `"${repeated[0][0]}" opens ${repeated[0][1]} bullets`,
-        detail:
-          "Vary your opening verbs — repeating one makes the résumé read as a template. A recruiter notices within two bullets.",
-      });
-      score -= 5;
-    }
-
     // Overly long bullets.
     const longBullets = bullets.filter((b) => b.split(/\s+/).length > 45).length;
     if (longBullets >= 2) {
@@ -318,6 +327,51 @@ export function checkAts(
       });
       score -= 4;
     }
+  }
+
+  /* ---------- VERB VARIETY (whole document) ---------- */
+  // parsed.experience only covers dated roles; a Projects section can carry as
+  // many bullets again. Verb-thesaurus overuse — "Architected / Engineered /
+  // Devised / Crafted" recycled across 20 bullets — is the clearest template
+  // tell, so scan every bullet line in the document, not just the roles.
+  const docBullets = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /^[•◦▪‣·*•◦▪]\s+\S/.test(l))
+    .map((l) => l.replace(/^[•◦▪‣·*•◦▪]\s+/, ""));
+  const verbPool = docBullets.length >= totalBullets ? docBullets : bullets;
+
+  const openCounts = new Map<string, number>();
+  let strongOpens = 0;
+  for (const b of verbPool) {
+    const v = firstWord(b);
+    if (STRONG_VERBS.has(v)) {
+      strongOpens++;
+      openCounts.set(v, (openCounts.get(v) ?? 0) + 1);
+    }
+  }
+  const worst = [...openCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (worst && worst[1] >= 3) {
+    const shown = worst[0][0].toUpperCase() + worst[0].slice(1);
+    push({
+      severity: "warning",
+      category: "content",
+      label: `"${shown}" opens ${worst[1]} bullets`,
+      detail:
+        "One verb carrying 3+ bullets reads as fill-in-the-blank. Give each bullet its own verb — a recruiter clocks the repetition within two lines.",
+    });
+    score -= Math.min(12, (worst[1] - 2) * 4);
+  }
+  const diversity = strongOpens ? openCounts.size / strongOpens : 1;
+  if (verbPool.length >= 8 && diversity < 0.6) {
+    push({
+      severity: "info",
+      category: "content",
+      label: `Only ${openCounts.size} distinct opening verbs across ${strongOpens} bullets`,
+      detail:
+        "Cycling a handful of verbs (Built / Devised / Engineered / Crafted…) flattens the résumé. Aim for a fresh, specific verb per bullet.",
+    });
+    score -= 6;
   }
 
   const blob = text.toLowerCase();
@@ -424,21 +478,27 @@ export function checkAts(
   score = Math.max(0, Math.min(100, score));
   score = Math.min(score, hardCap);
 
-  // Polish ceiling: a real 88+ needs strong, quantified, cliché-free bullets.
+  const parseWarnings = issues.some(
+    (i) => i.category === "parseability" && i.severity !== "info",
+  );
+
+  // Polish ceiling: only a genuinely clean résumé — well quantified, varied
+  // verbs, cliché-free, and parsing without warnings — is allowed near the top.
   const polished =
     totalBullets >= 4 &&
-    quantifiedRatio >= 0.55 &&
+    quantifiedRatio >= 0.6 &&
     actionVerbRatio >= 0.85 &&
+    diversity >= 0.6 &&
     !contentFlaw &&
+    !parseWarnings &&
     parsed.skills.length >= 8;
-  if (score > 88 && !polished) score = 88;
-  // Any weak-opener / buzzword / pronoun flaw caps the whole thing well short
-  // of "excellent".
-  if (score > 78 && contentFlaw) score = 78;
+  if (!polished) score = Math.min(score, 82);
+  // Any weak-opener / buzzword / pronoun flaw caps it well short of "strong".
+  if (contentFlaw) score = Math.min(score, 74);
   // The rule engine is a heuristic floor, not a final verdict — it can't judge
-  // relevance, specificity, tone or fine formatting. A perfect score requires
-  // the LLM pass (mergeAts). Rules alone never exceed 92.
-  score = Math.min(score, 92);
+  // relevance, specificity, seniority fit or tone. Anything above "strong with
+  // minor nits" needs the LLM pass (mergeAts). Rules alone never exceed 88.
+  score = Math.min(score, 88);
 
   const order: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
   issues.sort((a, b) => order[a.severity] - order[b.severity]);
