@@ -23,16 +23,23 @@ export interface DigestSelection {
   jobs: DigestJob[];
 }
 
-/** How far back "new" reaches when a user has never had a digest. */
-const FIRST_RUN_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** How far back "new" reaches when a user has never had a digest (or hasn't
+ * had one in a while). Wide enough to catch the last ingest or two. */
+const FIRST_RUN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_JOBS = 15;
 
 /**
  * Pick the jobs that belong in one user's digest:
- *   - posted since their last digest (or last 24h on first run)
+ *   - entered our system since their last digest (or last 7 days on first run)
  *   - match score >= their threshold
  *   - not already sent to them in a previous digest (DigestSend)
  * Ordered by score, capped at 15.
+ *
+ * NB: the filter is on `job.ingestedAt` (when we first discovered the posting),
+ * NOT `job.postedAt` (the company's own publish date, often weeks old). A job
+ * a company posted three weeks ago but that our crawler only found today is
+ * new *to the user* and belongs in tonight's digest. `postedAt` is still what
+ * the email shows as "posted Xd ago" and the tiebreak sort.
  */
 export async function selectForUser(userId: string): Promise<DigestJob[]> {
   const user = await db.user.findUnique({ where: { id: userId } });
@@ -46,7 +53,7 @@ export async function selectForUser(userId: string): Promise<DigestJob[]> {
     where: {
       userId,
       score: { gte: user.matchThreshold },
-      job: { postedAt: { gte: since } },
+      job: { ingestedAt: { gte: since } },
       // exclude anything already digested
       NOT: { job: { digestSends: { some: { userId } } } },
     },

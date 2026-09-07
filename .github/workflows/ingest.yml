@@ -1,0 +1,39 @@
+# Daily job ingestion.
+#
+# Polls every configured board (Greenhouse / Lever / Ashby / SmartRecruiters /
+# Recruitee / Workable), the resolved YC companies, RemoteOK / Remotive /
+# Arbeitnow / Adzuna, folds in parsed HN "Who is hiring?" postings, then
+# rescores every onboarded user so the feed and the 8:00 IST digest have fresh
+# jobs to work with.
+#
+# Runs at 02:00 UTC (7:30 AM IST) — 30 min before daily-digest, so the digest
+# sees whatever this run discovered.
+#
+# Secrets required (Repo Settings -> Secrets and variables -> Actions):
+#   APP_ORIGIN    e.g. https://job-automation-pipeline.vercel.app  (no trailing slash)
+#   CRON_SECRET   must match the deployed app's CRON_SECRET env var
+name: daily-ingest
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ingest endpoint
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
+            -X POST "${APP_ORIGIN%/}/api/ingest" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            --max-time 600)
+          echo "HTTP $code"
+          cat /tmp/out.json
+          echo
+          test "$code" = "200"
+        env:
+          APP_ORIGIN: ${{ secrets.APP_ORIGIN }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
