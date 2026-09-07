@@ -39,13 +39,28 @@ export async function getCurrentUser(): Promise<User | null> {
   const identity = await resolveIdentity();
   if (!identity) return null;
 
+  // Hot path is a cheap indexed read — a write on every page load is what
+  // starves the connection pool when Neon is waking from scale-to-zero.
+  const existing = await db.user.findUnique({
+    where: { authId: identity.authId },
+  });
+  if (existing) {
+    const emailChanged = Boolean(identity.email && identity.email !== existing.email);
+    const nameChanged = Boolean(identity.name && identity.name !== existing.name);
+    if (!emailChanged && !nameChanged) return existing;
+    return db.user.update({
+      where: { authId: identity.authId },
+      data: {
+        ...(emailChanged ? { email: identity.email! } : {}),
+        ...(nameChanged ? { name: identity.name! } : {}),
+      },
+    });
+  }
+
+  // First sight (or a lost race) — upsert keeps it safe under concurrency.
   return db.user.upsert({
     where: { authId: identity.authId },
-    update: {
-      // Keep Clerk-owned fields in sync, but never clobber with nulls.
-      ...(identity.email ? { email: identity.email } : {}),
-      ...(identity.name ? { name: identity.name } : {}),
-    },
+    update: {},
     create: {
       authId: identity.authId,
       email: identity.email,
