@@ -1,8 +1,8 @@
 /**
  * Per-site DOM extractors. Each returns { title, company, description, location }
- * from the page the user is ALREADY viewing. This is user-initiated capture of
+ * from the job page the user is ALREADY viewing. User-initiated capture of
  * visible content — the same model Teal / Huntr / Simplify use — not scraping:
- * nothing here navigates, paginates, or runs without a click.
+ * nothing here navigates, paginates, scrolls, or runs without a click.
  */
 (function () {
   const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
@@ -20,92 +20,12 @@
     return best;
   };
 
-  // LinkedIn's class names rotate constantly, so its extractors are built on
-  // stable anchors (every card links to /jobs/view/<id>) and reconstruct the
-  // company / location from the card's visible text lines instead.
-  const LI_NOISE =
-    /^(promoted|easy apply|be an early applicant|actively reviewing applicants|viewed|applicants?|see (all|how)|save|apply|share|·|\d+\s*(applicants?|connections?|company alumni|people clicked|school alumni)|responses managed|with verification|reposted|\d+\s*(hour|day|week|month)s?\s*ago)/i;
-
+  // LinkedIn's split view puts the job detail in a right-hand pane; scope the
+  // fallback text scan to it so it doesn't grab the left results rail.
   const liDetailRoot = () =>
     document.querySelector(
       ".jobs-search__job-details--container, .jobs-details__main-content, .job-view-layout, .jobs-details"
     );
-
-  function liCard(anchor) {
-    let href = anchor.getAttribute("href") || "";
-    if (href.startsWith("/")) href = "https://www.linkedin.com" + href;
-    href = href.split("?")[0].split("#")[0];
-
-    const card =
-      anchor.closest("[data-occludable-job-id]") ||
-      anchor.closest("li") ||
-      anchor.closest("div.job-card-container") ||
-      anchor.parentElement ||
-      anchor;
-
-    const hidden = anchor.querySelector('span[aria-hidden="true"]');
-    let title = clean(
-      (hidden && hidden.innerText) || anchor.getAttribute("aria-label") || anchor.innerText
-    )
-      .replace(/^view job:?\s*/i, "")
-      .replace(/\s*(with verification|·.*)$/i, "");
-    if (!title) {
-      // Last resort so a half-rendered card isn't dropped: first non-noise line.
-      const first = clean(card.innerText)
-        .split("\n")
-        .map((s) => s.trim())
-        .find((l) => l.length > 2 && !LI_NOISE.test(l));
-      title = first || "";
-    }
-
-    const pick = (sels) => {
-      for (const s of sels) {
-        const el = card.querySelector(s);
-        const t = el && clean(el.innerText || el.textContent);
-        if (t) return t;
-      }
-      return "";
-    };
-
-    // Company: the card logo's alt text is LinkedIn's most stable signal;
-    // then known subtitle classes; then line reconstruction.
-    let company = "";
-    const logo = card.querySelector("img[alt]");
-    if (logo) {
-      company = clean(logo.getAttribute("alt")).replace(/\s+(company\s+)?logo$/i, "");
-      if (/^(company|logo|)$/i.test(company)) company = "";
-    }
-    if (!company)
-      company = pick([
-        ".artdeco-entity-lockup__subtitle",
-        ".job-card-container__primary-description",
-        ".job-card-container__company-name",
-        '[class*="subtitle"]',
-      ]);
-
-    let location = pick([
-      ".artdeco-entity-lockup__caption",
-      ".job-card-container__metadata-item",
-      ".job-card-container__metadata-wrapper li",
-      '[class*="metadata"] li',
-      '[class*="caption"]',
-    ]);
-
-    let extra = "";
-    if (!company || !location) {
-      let lines = clean(card.innerText)
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      lines = lines.filter((l, i) => l !== lines[i - 1]); // a11y dupes
-      lines = lines.filter((l) => !l.startsWith(title) && !LI_NOISE.test(l));
-      if (!company) company = lines[0] || "";
-      if (!location) location = lines[company === lines[0] ? 1 : 0] || "";
-      extra = lines.slice(2).join(". ");
-    }
-
-    return { url: href, title, company, location, description: extra };
-  }
 
   const EXTRACTORS = {
     "linkedin.com": () => {
@@ -178,102 +98,10 @@
     return Object.keys(EXTRACTORS).find((k) => h === k || h.endsWith("." + k) || h.includes(k.split(".")[0]));
   }
 
-  // --- List / search-results extractors -------------------------------------
-  // Return every job card currently in the DOM on a results page. These carry
-  // only a short teaser; the app pads the description when scoring. Still just
-  // reading what the page already rendered — nothing paginates or scrolls.
-  const attr = (el, sels) => {
-    for (const s of sels) {
-      const n = el.querySelector(s);
-      const v = n && (n.getAttribute("href") || n.href);
-      if (v) return v;
-    }
-    return "";
-  };
-  const inCard = (el, sels) => {
-    for (const s of sels) {
-      const n = el.querySelector(s);
-      const t = n && clean(n.innerText || n.textContent);
-      if (t) return t;
-    }
-    return "";
-  };
-
-  const LIST_EXTRACTORS = {
-    "linkedin.com": () => {
-      // One card can hold several /jobs/view/ links (title, logo, footer) —
-      // keep the anchor with the most text per card.
-      const cardMap = new Map();
-      document.querySelectorAll('a[href*="/jobs/view/"]').forEach((a) => {
-        const card =
-          a.closest("[data-occludable-job-id]") ||
-          a.closest("[data-job-id]") ||
-          a.closest("li") ||
-          a.closest("div.job-card-container") ||
-          a.parentElement;
-        if (!card) return;
-        const weight = (a.getAttribute("aria-label") || a.innerText || "").length;
-        const prev = cardMap.get(card);
-        if (!prev || weight > prev.weight) cardMap.set(card, { a, weight });
-      });
-      return Array.from(cardMap.values()).map(({ a }) => liCard(a));
-    },
-    "naukri.com": () => {
-      const cards = document.querySelectorAll(
-        ".srp-jobtuple-wrapper, article.jobTuple, div.jobTuple, .cust-job-tuple"
-      );
-      return Array.from(cards).map((card) => {
-        let href = attr(card, ["a.title", "a.title.ellipsis", 'a[href*="/job-listings-"]']);
-        if (href && href.startsWith("/")) href = "https://www.naukri.com" + href;
-        const exp = inCard(card, [".expwdth", ".exp-wrap .expwdth", "span.expwdth"]);
-        const sal = inCard(card, [".sal-wrap span", "span.sal", ".salary"]);
-        const desc = inCard(card, [".job-desc", "span.job-desc", ".job-description"]);
-        return {
-          url: (href || "").split("?")[0],
-          title: inCard(card, ["a.title", ".title.ellipsis", "a.title.ellipsis"]),
-          company: inCard(card, ["a.comp-name", ".comp-name", "a.subTitle", ".subTitle"]),
-          location: inCard(card, [".locWdth", "span.locWdth", ".loc-wrap .locWdth", ".loc span"]),
-          description: [desc, exp && `Experience: ${exp}`, sal && `Salary: ${sal}`]
-            .filter(Boolean)
-            .join(". "),
-        };
-      });
-    },
-  };
-
-  window.__ksk_extract_list = function () {
-    const key = hostKey();
-    const fn = key && LIST_EXTRACTORS[key];
-    if (!fn) return { site: key || location.hostname, items: [] };
-    let raw = [];
-    try {
-      raw = fn() || [];
-    } catch (e) {
-      raw = [];
-    }
-    const seen = new Set();
-    const items = [];
-    for (const it of raw) {
-      const url = (it.url || "").split("#")[0];
-      if (!url || !it.title || seen.has(url)) continue;
-      seen.add(url);
-      items.push({
-        url,
-        title: clean(it.title),
-        company: clean(it.company),
-        location: clean(it.location),
-        description: clean(it.description || "").slice(0, 4000),
-      });
-    }
-    return { site: key ? key.replace(/\.com$/, "") : location.hostname, items };
-  };
-
   window.__ksk_extract = function () {
     const key = hostKey();
     let data = key ? EXTRACTORS[key]() : {};
     if (!data.description || data.description.length < 90) {
-      // On LinkedIn a whole-page scan grabs the left results rail — confine it
-      // to the detail pane.
       const root = key === "linkedin.com" ? liDetailRoot() : null;
       data = {
         title: data.title || textOf("h1") || clean(document.title),
