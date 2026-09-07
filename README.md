@@ -31,22 +31,65 @@ daily digest of new matches.
 
 ## What it does
 
-| Feature | Notes |
-|---|---|
-| **Job aggregation** | Polls ~40 company boards (Greenhouse / Lever / Ashby / SmartRecruiters / Recruitee / Workable) + whole-market feeds (RemoteOK, Remotive, Arbeitnow, Adzuna) + HN "Who is hiring?" + your followed companies. No auth, no scraping — these are feeds employers publish for syndication. India-weighted default list. |
-| **Y Combinator companies** | Pull recent YC batches → auto-discover each company's job board → poll it like any other. Companies with no detectable board can be read once via Firecrawl (careers page → Markdown, credit-paranoid). |
-| **Résumé parsing** | PDF / DOCX / TXT → structured skills, experience, education. Rule-based parser with a Gemini field-extraction pass on top. |
-| **ATS check** | Strict résumé readability + writing-quality score (parseability, quantified bullets, verb strength & variety, clichés, pronouns, extraction noise) plus a Gemini review layer. Calibrated so a clean-but-average résumé lands in the 70s–low 80s, not 100. |
-| **Match scoring** | Weighted blend of semantic similarity, keyword coverage, title relevance, experience fit and location fit — each sub-score stored and shown so the feed explains itself. Keyword coverage is category-weighted: hard tools/languages count full, engineering practices half, soft-skill boilerplate ("Communication", "Collaboration") almost nothing. |
-| **Feed** | Search, filters (location type / role type / source / min score), "Best match" vs "Newest" sort, paging, per-job detail sheet with description / keyword gaps / suggested bullets / outreach draft. A **Job boards / Captured** toggle keeps extension captures out of the main feed. |
-| **Semantic matching** | Gemini `gemini-embedding-001` (768-dim), cosine in JS. Falls back to keyword-only cleanly when embeddings aren't available — the scorer redistributes the weight so the number stays sensible. |
-| **Scam heuristic** | Flags remote/internship listings with the usual red flags (fee requests, wildly off comp, personal-email applies…). |
-| **Application tracker** | Kanban board — *Saved → Applied → Interviewing → Offer / Rejected*. Snapshots the JD at save time, nudges follow-ups after a week. |
-| **Outreach drafts** | Template cold-email / connection-note per job. The app never sends anything — you copy and send from your own account. |
-| **Insights** | Your ATS score, aggregate skill gaps across your feed, and per-source ingestion health. |
-| **Recap** | Weekly activity summary, shareable. |
-| **Daily digest** | 8:00 AM IST email of new matches above your threshold. Nothing sent on a zero-match day. One-click unsubscribe. |
-| **Browser extension** | One click to save the LinkedIn / Naukri / Wellfound / careers-page job you're viewing. See below. |
+One loop — **pull jobs → score them against your résumé → surface the good
+ones** — wrapped in a tracker, a daily email, and a browser extension for the
+boards it can't poll.
+
+```mermaid
+flowchart TD
+    subgraph IN["Inputs"]
+        S["~40 job boards + market feeds<br/>+ HN Who's Hiring + YC + followed companies"]
+        X["Browser extension<br/>LinkedIn / Naukri / careers-page job you're viewing"]
+        R["Your résumé<br/>parsed + ATS-checked"]
+    end
+
+    subgraph PIPE["Pipeline — runs daily"]
+        I["Ingest + dedup<br/>(fingerprint / dedupKey)"]
+        SC["Score every job vs your résumé<br/>semantic + keyword + title + experience + location"]
+        EX["Expiry sweep<br/>gone from board / past deadline / aged out → archived"]
+        I --> SC --> EX
+    end
+
+    subgraph OUT["Outputs"]
+        F["Ranked feed<br/>search · filters · Job boards / Captured"]
+        D["Daily digest email — 8 AM IST<br/>new matches above your threshold"]
+        T["Application tracker<br/>Saved → Applied → Interviewing → Offer"]
+        N["Insights + Recap<br/>ATS score · skill gaps · source health"]
+    end
+
+    S --> I
+    X --> I
+    R --> SC
+    SC --> F
+    SC --> D
+    F --> T
+    F --> N
+```
+
+- **Aggregates** ~40 company boards (Greenhouse / Lever / Ashby / SmartRecruiters
+  / Recruitee / Workable) plus RemoteOK, Remotive, Arbeitnow, Adzuna, HN "Who's
+  Hiring", your followed companies and recent YC batches — public feeds, no
+  scraping. India-weighted default list.
+- **Captures** the LinkedIn / Naukri / careers-page job you're viewing via a
+  one-click extension → shows up under a **Captured** tab, scored like anything
+  else.
+- **Parses your résumé** (PDF / DOCX / TXT) and runs a strict ATS readability +
+  writing-quality check (calibrated so a clean-but-average résumé lands in the
+  70s–low 80s, not 100).
+- **Scores every job** on a weighted blend of semantic similarity, keyword
+  coverage (hard skills weighted far above soft-skill boilerplate), title
+  relevance, experience and location — every sub-score shown so the feed
+  explains itself. Keyword-only fallback when embeddings aren't available.
+- **Ranks them into a feed** with search, filters and a Job boards / Captured
+  split; each job opens to keyword gaps, suggested bullets and an outreach
+  draft. A scam heuristic flags the obvious remote/internship red flags.
+- **Archives stale jobs** automatically — gone from the board, past deadline, or
+  aged out.
+- **Tracks applications** on a Kanban board with week-later follow-up nudges.
+- **Emails a daily digest** at 8 AM IST of new matches above your threshold —
+  nothing on a zero-match day, one-click unsubscribe.
+- **Insights + Recap** — your ATS score, aggregate skill gaps across the feed,
+  per-source health.
 
 ---
 
