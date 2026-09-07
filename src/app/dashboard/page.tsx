@@ -24,6 +24,8 @@ interface SearchParams {
   sort?: string;
   page?: string;
   job?: string;
+  /** "boards" (default) hides extension-captured jobs; "captured" shows only them. */
+  feed?: string;
 }
 
 export default async function DashboardPage({
@@ -39,6 +41,7 @@ export default async function DashboardPage({
   const page = Math.max(1, Number(sp.page) || 1);
   const minScore = Math.max(0, Math.min(100, Number(sp.min) || 0));
   const sort = sp.sort === "recent" ? "recent" : "score";
+  const feedView = sp.feed === "captured" ? "captured" : "boards";
 
   // Filters are applied on the Job relation of MatchScore, so paging and
   // ordering both happen in SQL rather than by loading every row into memory.
@@ -53,7 +56,15 @@ export default async function DashboardPage({
       { company: { contains: q } },
     ];
   }
-  if (sp.source && sp.source !== "all") jobWhere.source = sp.source;
+  // Extension-captured jobs (LinkedIn / Naukri) live in their own view so the
+  // thin teasers don't dilute the board feed. An explicit Source chip overrides.
+  if (sp.source && sp.source !== "all") {
+    jobWhere.source = sp.source;
+  } else if (feedView === "captured") {
+    jobWhere.source = "capture";
+  } else {
+    jobWhere.source = { not: "capture" };
+  }
   if (sp.remote && sp.remote !== "all") jobWhere.remoteType = sp.remote;
   if (sp.type && sp.type !== "all") jobWhere.employmentType = sp.type;
 
@@ -63,7 +74,7 @@ export default async function DashboardPage({
     job: jobWhere,
   };
 
-  const [total, rows, applications, tickerRows, sourceGroups] =
+  const [total, rows, applications, tickerRows, sourceGroups, capturedCount] =
     await Promise.all([
       db.matchScore.count({ where }),
       db.matchScore.findMany({
@@ -87,6 +98,9 @@ export default async function DashboardPage({
         include: { job: { select: { id: true, title: true, company: true, source: true } } },
       }),
       db.job.groupBy({ by: ["source"], _count: true }),
+      db.matchScore.count({
+        where: { userId: user.id, job: { source: "capture" } },
+      }),
     ]);
 
   const statusByJob = new Map(applications.map((a) => [a.jobId, a.status]));
@@ -143,6 +157,10 @@ export default async function DashboardPage({
           <RefreshJobsButton />
         </div>
 
+        {capturedCount > 0 && (
+          <FeedScopeTabs feedView={feedView} capturedCount={capturedCount} params={sp} />
+        )}
+
         <FeedFilters
           sources={sourceGroups.map((g) => ({
             id: g.source,
@@ -176,6 +194,55 @@ export default async function DashboardPage({
       {sp.job && <JobDetailSheet jobId={sp.job} userId={user.id} />}
       <LiveFeedDock items={tickerItems} />
     </>
+  );
+}
+
+function FeedScopeTabs({
+  feedView,
+  capturedCount,
+  params,
+}: {
+  feedView: "boards" | "captured";
+  capturedCount: number;
+  params: SearchParams;
+}) {
+  const href = (feed: "boards" | "captured") => {
+    const next = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v && k !== "page" && k !== "job" && k !== "feed" && k !== "source") {
+        next.set(k, String(v));
+      }
+    }
+    if (feed === "captured") next.set("feed", "captured");
+    const qs = next.toString();
+    return qs ? `/dashboard?${qs}` : "/dashboard";
+  };
+
+  const tab = (
+    key: "boards" | "captured",
+    label: string,
+    count?: number,
+  ) => (
+    <a
+      href={href(key)}
+      className={`rounded-full border-2 px-4 py-1.5 text-sm font-bold transition-colors ${
+        feedView === key
+          ? "border-accent bg-accent/15 text-accent"
+          : "border-hairline text-paper/55 hover:border-paper/30 hover:text-paper"
+      }`}
+    >
+      {label}
+      {typeof count === "number" && (
+        <span className="ml-1.5 opacity-70">{count.toLocaleString("en-IN")}</span>
+      )}
+    </a>
+  );
+
+  return (
+    <div className="mb-3 flex gap-2">
+      {tab("boards", "Job boards")}
+      {tab("captured", "Captured", capturedCount)}
+    </div>
   );
 }
 

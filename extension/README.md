@@ -7,15 +7,19 @@ Two pills, bottom-right:
 
 - **★ Save to Kaam Se Kaam** — the single posting you're on, full description →
   `POST /api/jobs/capture`.
-- **⇊ Capture all on this page** — every job card currently rendered on a
-  LinkedIn or Naukri **search-results** page (title / company / location / short
-  teaser + permalink) → `POST /api/jobs/capture/batch`. The app pads the thin
-  teaser when scoring; open the good matches and use **★ Save** for the full JD.
-  Scroll the results list to the bottom first so all cards are in the DOM.
+- **⇊ Capture all on this page** — every job card on a LinkedIn or Naukri
+  **search-results** page (title / company / location / short teaser + permalink)
+  → `POST /api/jobs/capture/batch`. LinkedIn keeps only ~7 cards in the DOM at a
+  time, so on click this steps the results list down one screen at a time,
+  reading what's rendered at each stop and merging by URL, then restores your
+  scroll position. The app pads the thin teaser when scoring; open the good
+  matches and use **★ Save** for the full JD.
 
-This is not a scraper. It reads the DOM of the page in front of you when you
-click a pill. It never navigates, paginates, scrolls, logs in on your behalf,
-or runs without a click. Same model as Teal, Huntr, Simplify.
+This is not a scraper. It reads the DOM of the page in front of you, on your
+click, in your own logged-in session. It never navigates between pages,
+clicks "next", or runs on its own — the only thing it moves is the results
+list's own scrollbar, to load the cards you're about to capture. Same model
+as Teal, Huntr, Simplify.
 
 The extractors run in the content-script isolated world (they only need the
 page's DOM, not its JavaScript), so nothing is injected into the page itself —

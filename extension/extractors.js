@@ -44,11 +44,19 @@
       anchor;
 
     const hidden = anchor.querySelector('span[aria-hidden="true"]');
-    const title = clean(
+    let title = clean(
       (hidden && hidden.innerText) || anchor.getAttribute("aria-label") || anchor.innerText
     )
       .replace(/^view job:?\s*/i, "")
       .replace(/\s*(with verification|·.*)$/i, "");
+    if (!title) {
+      // Last resort so a half-rendered card isn't dropped: first non-noise line.
+      const first = clean(card.innerText)
+        .split("\n")
+        .map((s) => s.trim())
+        .find((l) => l.length > 2 && !LI_NOISE.test(l));
+      title = first || "";
+    }
 
     const pick = (sels) => {
       for (const s of sels) {
@@ -198,9 +206,9 @@
       const cardMap = new Map();
       document.querySelectorAll('a[href*="/jobs/view/"]').forEach((a) => {
         const card =
-          a.closest("li") ||
           a.closest("[data-occludable-job-id]") ||
           a.closest("[data-job-id]") ||
+          a.closest("li") ||
           a.closest("div.job-card-container") ||
           a.parentElement;
         if (!card) return;
