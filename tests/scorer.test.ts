@@ -67,6 +67,51 @@ describe("scoreJob", () => {
     expect(withSemantic.score).toBeGreaterThan(55);
   });
 
+  it("weights hard tech skills over soft-skill boilerplate", () => {
+    const base = {
+      title: "Backend Engineer",
+      locations: ["Bengaluru"],
+      remoteType: "onsite",
+      employmentType: "fulltime",
+    };
+    // JD asks for the same tech, but one piles on soft-skill boilerplate the
+    // resume doesn't name. That should barely move the score.
+    const techOnly = scoreJob({
+      job: { ...base, descriptionText: "Node.js and PostgreSQL and GraphQL and Redis." },
+      profile: frontendProfile,
+    });
+    const withSoftNoise = scoreJob({
+      job: {
+        ...base,
+        descriptionText:
+          "Node.js and PostgreSQL and GraphQL and Redis. Strong communication, collaboration, ownership, mentoring and stakeholder management.",
+      },
+      profile: frontendProfile,
+    });
+    expect(techOnly.keywordScore - withSoftNoise.keywordScore).toBeLessThan(8);
+    // Soft skills never surface as an actionable gap chip.
+    for (const soft of ["Communication", "Collaboration", "Ownership", "Mentoring"]) {
+      expect(withSoftNoise.missingKeywords).not.toContain(soft);
+    }
+  });
+
+  it("orders gap chips hard-tools first", () => {
+    const r = scoreJob({
+      job: {
+        title: "Data Engineer",
+        descriptionText:
+          "Kafka, Airflow, Spark, dbt pipelines. System design and testing discipline expected.",
+        locations: ["Remote"],
+        remoteType: "remote",
+        employmentType: "fulltime",
+      },
+      profile: { ...frontendProfile, skills: [] },
+    });
+    const practiceIdx = r.missingKeywords.findIndex((s) => s === "System Design" || s === "Testing");
+    const toolIdx = r.missingKeywords.findIndex((s) => ["Kafka", "Airflow", "Spark", "dbt"].includes(s));
+    if (practiceIdx !== -1 && toolIdx !== -1) expect(toolIdx).toBeLessThan(practiceIdx);
+  });
+
   it("gates a completely off-target title even with incidental keyword overlap", () => {
     const r = scoreJob({
       job: {

@@ -166,6 +166,46 @@ const surfaceForms: Array<{ form: string; canonical: string }> = SKILLS.flatMap(
 export const SKILL_BY_CANONICAL = new Map(SKILLS.map((s) => [s.canonical, s]));
 
 /**
+ * How much a skill counts in JD keyword matching.
+ *
+ * Hard tools and languages carry the signal — a keyword screen keys on named
+ * technologies, and "missing Kafka" is a real gap. Engineering *practices*
+ * (System Design, Testing, Security) are genuine but softer differentiators.
+ * Soft skills ("Communication", "Collaboration", "Ownership") are JD
+ * boilerplate: near-universal, trivially paraphrased, and usually written for
+ * the sake of it — so they barely move the score and are hidden from the gap
+ * list entirely.
+ */
+const CATEGORY_WEIGHT: Record<SkillCategory, number> = {
+  language: 1,
+  frontend: 1,
+  backend: 1,
+  data: 1,
+  cloud: 1,
+  devops: 1,
+  mobile: 1,
+  practice: 0.5,
+  soft: 0.15,
+};
+
+/**
+ * Canonicals whose bare word turns up in JD prose so often ("an accessible
+ * codebase", "responsive to the business") that the match is usually spurious.
+ * Scored and displayed like a soft skill regardless of their real category.
+ */
+const LOW_SIGNAL = new Set(["Accessibility", "Responsive Design"]);
+
+/** Category weight for a canonical skill (default 1 for anything unknown). */
+export function skillWeight(canonical: string): number {
+  if (LOW_SIGNAL.has(canonical)) return 0.15;
+  const def = SKILL_BY_CANONICAL.get(canonical);
+  return def ? CATEGORY_WEIGHT[def.category] : 1;
+}
+
+/** Skills at or below this weight are boilerplate — hidden from the gap chips. */
+export const GAP_CHIP_MIN_WEIGHT = 0.3;
+
+/**
  * Escape regex metacharacters — "C++", "C#" and ".NET" all contain them and
  * would otherwise compile into garbage patterns.
  */

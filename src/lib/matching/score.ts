@@ -1,4 +1,5 @@
 import { analyseJd, SENIORITY_YEARS, type Seniority } from "./jd";
+import { GAP_CHIP_MIN_WEIGHT, skillWeight } from "./skills";
 import { WEIGHT_PROFILES, type WeightProfile } from "./weights";
 
 export interface ScoreInput {
@@ -65,8 +66,12 @@ function titleTokens(value: string): Set<string> {
  * Deliberately asymmetric — extra skills on the resume that the JD never
  * mentions are neither credit nor penalty. Coverage of the JD's asks is the
  * question a recruiter's screen is answering.
+ *
+ * Weighted by category (see `skillWeight`): hard tools and languages count
+ * full, engineering practices half, soft-skill boilerplate almost nothing.
+ * Missing "Kafka" should cost you; missing "Collaboration" shouldn't.
  */
-/** Below this many recognised skills, a JD's keyword ratio is mostly noise. */
+/** Below this much *weighted* skill demand, a JD's keyword ratio is mostly noise. */
 const CONFIDENT_SKILL_COUNT = 6;
 
 function scoreKeywords(jdSkills: string[], resumeSkills: string[]) {
@@ -86,16 +91,26 @@ function scoreKeywords(jdSkills: string[], resumeSkills: string[]) {
     return { ratio: 0.5, matched, missing };
   }
 
-  const raw = matched.length / jdSkills.length;
+  const wsum = (list: string[]) => list.reduce((n, s) => n + skillWeight(s), 0);
+  const totalW = wsum(jdSkills);
+  const raw = totalW > 0 ? wsum(matched) / totalW : 0.5;
 
-  // Damp toward neutral when the denominator is tiny. A non-technical JD that
-  // happens to say "testing" once would otherwise score a perfect 1.0 on a
-  // single incidental hit and outrank genuinely well-matched engineering
-  // roles — observed with "Senior Stock Administrator" scoring 100% keywords.
-  const confidence = Math.min(1, jdSkills.length / CONFIDENT_SKILL_COUNT);
+  // Damp toward neutral when the weighted demand is tiny. A non-technical JD
+  // that happens to say "testing" once, or one that names only soft skills,
+  // would otherwise score on a single incidental hit and outrank genuinely
+  // well-matched engineering roles — observed with "Senior Stock
+  // Administrator" scoring 100% keywords.
+  const confidence = Math.min(1, totalW / CONFIDENT_SKILL_COUNT);
   const ratio = raw * confidence + 0.5 * (1 - confidence);
 
-  return { ratio, matched, missing };
+  // Gap chips: hard tools first, and drop soft-skill boilerplate — it isn't an
+  // actionable gap and just clutters the list.
+  const forDisplay = (list: string[]) =>
+    [...list]
+      .filter((s) => skillWeight(s) >= GAP_CHIP_MIN_WEIGHT)
+      .sort((a, b) => skillWeight(b) - skillWeight(a));
+
+  return { ratio, matched: forDisplay(matched), missing: forDisplay(missing) };
 }
 
 /**
