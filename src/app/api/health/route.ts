@@ -11,7 +11,10 @@ export const runtime = "nodejs";
  * just showing up as "fewer jobs than usual".
  */
 export const GET = route(async () => {
-  const jobs = await db.job.count();
+  const [jobs, archived] = await Promise.all([
+    db.job.count({ where: { status: "open" } }),
+    db.job.count({ where: { status: "archived" } }),
+  ]);
 
   const perSource = await Promise.all(
     [...new Set(DEFAULT_TARGETS.map((t) => t.source))].map(async (source) => {
@@ -29,7 +32,7 @@ export const GET = route(async () => {
 
       return {
         source,
-        jobs: await db.job.count({ where: { source } }),
+        jobs: await db.job.count({ where: { source, status: "open" } }),
         lastRunAt: latest?.startedAt ?? null,
         lastStatus: latest?.status ?? "never-run",
         lastError: latest?.error ?? null,
@@ -57,6 +60,7 @@ export const GET = route(async () => {
   return ok({
     status: failing.length === 0 ? "ok" : "degraded",
     jobs,
+    archivedJobs: archived,
     sources: perSource,
     failing: failing.map((s) => s.source),
     firecrawl: { creditsUsedLast30d: firecrawlCredits, monthlyFree: 1000 },

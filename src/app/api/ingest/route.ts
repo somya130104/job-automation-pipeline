@@ -60,6 +60,14 @@ export const POST = route(async (req: Request) => {
     }
   }
 
+  // Expire stale/closed postings before rescoring — a full run only, since a
+  // single-source ingest hasn't re-verified the other boards this pass.
+  let cleanup;
+  if (!only) {
+    const { sweepExpiredJobs } = await import("@/lib/sources/cleanup");
+    cleanup = await sweepExpiredJobs();
+  }
+
   // Score whatever is new for everyone who has finished onboarding, so the
   // feed is populated the moment the run finishes.
   const users = await db.user.findMany({
@@ -75,5 +83,6 @@ export const POST = route(async (req: Request) => {
     fetched: summary.totalFetched,
     durationMs: summary.finishedAt.getTime() - summary.startedAt.getTime(),
     targets: summary.targets,
+    cleanup,
   });
 });

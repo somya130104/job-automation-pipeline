@@ -14,9 +14,14 @@ export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
   const [jobCount, companyGroups, recent] = await Promise.all([
-    db.job.count(),
-    db.job.findMany({ select: { company: true }, distinct: ["company"] }),
+    db.job.count({ where: { status: "open" } }),
     db.job.findMany({
+      where: { status: "open" },
+      select: { company: true },
+      distinct: ["company"],
+    }),
+    db.job.findMany({
+      where: { status: "open" },
       orderBy: { postedAt: "desc" },
       take: 12,
       select: { id: true, title: true, company: true, source: true },

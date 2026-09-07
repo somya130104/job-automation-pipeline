@@ -45,7 +45,9 @@ export default async function DashboardPage({
 
   // Filters are applied on the Job relation of MatchScore, so paging and
   // ordering both happen in SQL rather than by loading every row into memory.
-  const jobWhere: Prisma.JobWhereInput = {};
+  // `status: open` also excludes anything sweepExpiredJobs() archived (its
+  // MatchScore rows are dropped too, so this is belt-and-suspenders).
+  const jobWhere: Prisma.JobWhereInput = { status: "open" };
 
   if (sp.q?.trim()) {
     const q = sp.q.trim();
@@ -92,14 +94,18 @@ export default async function DashboardPage({
         select: { jobId: true, status: true },
       }),
       db.matchScore.findMany({
-        where: { userId: user.id },
+        where: { userId: user.id, job: { status: "open" } },
         orderBy: { score: "desc" },
         take: 12,
         include: { job: { select: { id: true, title: true, company: true, source: true } } },
       }),
-      db.job.groupBy({ by: ["source"], _count: true }),
+      db.job.groupBy({
+        by: ["source"],
+        where: { status: "open" },
+        _count: true,
+      }),
       db.matchScore.count({
-        where: { userId: user.id, job: { source: "capture" } },
+        where: { userId: user.id, job: { source: "capture", status: "open" } },
       }),
     ]);
 

@@ -222,6 +222,9 @@ export async function crawlCareerPage(
         contentHash: scraped.hash,
         scamRisk: scam.risk,
         scamReasons: writeList(scam.reasons),
+        lastSeenAt: new Date(),
+        status: "open",
+        archivedAt: null,
       },
     });
     result.created += 1;

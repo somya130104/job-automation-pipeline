@@ -78,6 +78,11 @@ async function persist(
 
     const data = {
       dedupKey: key,
+      // Seen this run: refresh the shelf-life clock and re-open the posting if
+      // a previous sweep had archived it but it's back on the board.
+      lastSeenAt: new Date(),
+      status: "open",
+      archivedAt: null,
       externalId: job.externalId,
       source: job.source,
       sourceToken: job.sourceToken,

@@ -53,7 +53,7 @@ export async function selectForUser(userId: string): Promise<DigestJob[]> {
     where: {
       userId,
       score: { gte: user.matchThreshold },
-      job: { ingestedAt: { gte: since } },
+      job: { status: "open", ingestedAt: { gte: since } },
       // exclude anything already digested
       NOT: { job: { digestSends: { some: { userId } } } },
     },

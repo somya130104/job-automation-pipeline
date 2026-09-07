@@ -124,6 +124,16 @@ model Job {
 
   postedAt   DateTime
   ingestedAt DateTime @default(now())
+  // Bumped every ingest run in which this posting is seen again. Absence of a
+  // recent bump is how a filled/closed board role gets archived — a far better
+  // "expired" signal than postedAt, which punishes legitimately long-open roles.
+  lastSeenAt DateTime @default(now())
+
+  // Lifecycle: "open" shows in the feed / digest; "archived" is kept for the
+  // Tracker + Recap + dedup history but hidden everywhere else, and its
+  // MatchScore rows are dropped. Set by sweepExpiredJobs() after each ingest.
+  status     String    @default("open") // open | archived
+  archivedAt DateTime?
 
   // --- Phase 2: semantic matching. all-MiniLM-L6-v2 -> 384 floats, JSON-encoded
   // (SQLite has no vector type; cosine is computed in JS). Null until embedded.
@@ -144,6 +154,8 @@ model Job {
   @@index([dedupKey])
   @@index([postedAt])
   @@index([source])
+  @@index([status])
+  @@index([lastSeenAt])
 }
 
 model MatchScore {

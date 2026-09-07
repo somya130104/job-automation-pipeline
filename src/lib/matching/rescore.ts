@@ -76,7 +76,10 @@ export async function rescoreUser(
   }
 
   const jobs = await db.job.findMany({
-    where: opts.onlyMissing ? { matchScores: { none: { userId } } } : undefined,
+    where: {
+      status: "open",
+      ...(opts.onlyMissing ? { matchScores: { none: { userId } } } : {}),
+    },
     select: {
       id: true,
       title: true,
